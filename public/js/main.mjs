@@ -434,7 +434,26 @@ function startApp(dom) {
     }
 
     try {
-      window.open(selectedWorker.profileUrl, '_blank', 'noopener,noreferrer');
+      const now = getFixedNow();
+      const currentTask = findCurrentTask(selectedWorker.plan, now);
+      const params = new URLSearchParams({
+        workerId: selectedWorker.id,
+        name: selectedWorker.name,
+        role: selectedWorker.role || '',
+        zone: selectedWorker.zone || '',
+        status: selectedWorker.status || ''
+      });
+
+      if (currentTask?.title) {
+        params.set('task', currentTask.title);
+      }
+
+      const detailsPath = `/add_new_employee.html?${params.toString()}`;
+      const popup = window.open(detailsPath, '_blank', 'noopener,noreferrer');
+      if (!popup) {
+        window.location.assign(detailsPath);
+      }
+
       ui.setStatus(`Opened detailed page for ${selectedWorker.name}.`);
     } catch (_error) {
       ui.setStatus('Unable to open worker details page from this browser context.', true);
