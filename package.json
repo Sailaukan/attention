@@ -14,7 +14,6 @@
   "type": "commonjs",
   "dependencies": {
     "dotenv": "^17.2.4",
-    "express": "^5.2.1",
-    "suncalc": "^1.9.0"
+    "express": "^5.2.1"
   }
 }

@@ -1,12 +1,14 @@
 const express = require('express');
 const path = require('path');
-const SunCalc = require('suncalc');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const SHADEMAP_API_KEY = String(process.env.SHADEMAP_API_KEY || '').trim();
-const USER_AGENT = 'CoolRoutesHackathon/1.0 (hackathon@local.dev)';
+const GROQ_API_KEY = String(process.env.GROQ_API_KEY || '').trim();
+const GROQ_MODEL = String(process.env.GROQ_MODEL || 'llama-3.3-70b-versatile').trim();
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const USER_AGENT = 'NYUADWorkerPlanner/1.0 (hackathon@local.dev)';
 const BUILDING_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const buildingCache = new Map();
@@ -21,7 +23,9 @@ app.get('/health', (_req, res) => {
 app.get('/api/runtime-config', (_req, res) => {
   res.json({
     shadeMapApiKey: SHADEMAP_API_KEY,
-    shadeMapEnabled: Boolean(SHADEMAP_API_KEY)
+    shadeMapEnabled: Boolean(SHADEMAP_API_KEY),
+    groqEnabled: Boolean(GROQ_API_KEY),
+    groqModel: GROQ_MODEL
   });
 });
 
@@ -62,172 +66,139 @@ app.get('/api/buildings', async (req, res) => {
         coordinates: [[...simplifyRing(building.ring).map((point) => [point.lng, point.lat])]]
       }
     }));
+
     res.json({ type: 'FeatureCollection', features });
   } catch (error) {
     res.status(502).json({ error: `Building fetch failed: ${error.message}` });
   }
 });
 
-app.get('/api/geocode', async (req, res) => {
-  const q = String(req.query.q || '').trim();
-  if (q.length < 3) {
-    res.status(400).json({ error: 'Query must be at least 3 characters.' });
+app.post('/api/llm/propose-switch', async (req, res) => {
+  if (!GROQ_API_KEY) {
+    res.status(503).json({ error: 'GROQ_API_KEY is not configured on the server.' });
     return;
   }
 
-  const url = new URL('https://nominatim.openstreetmap.org/search');
-  url.searchParams.set('q', q);
-  url.searchParams.set('format', 'jsonv2');
-  url.searchParams.set('limit', '5');
-  url.searchParams.set('addressdetails', '1');
-  url.searchParams.set('countrycodes', 'ae');
+  const redWorker = normalizeWorkerContext(req.body?.redWorker);
+  const candidates = Array.isArray(req.body?.candidateWorkers)
+    ? req.body.candidateWorkers.map(normalizeWorkerContext).filter(Boolean)
+    : [];
+
+  if (!redWorker || redWorker.status !== 'red') {
+    res.status(400).json({ error: 'Invalid red worker payload.' });
+    return;
+  }
+
+  if (!candidates.length) {
+    res.status(400).json({ error: 'At least one green candidate worker is required.' });
+    return;
+  }
 
   try {
-    const results = await fetchJson(url.toString(), {
-      headers: {
-        'User-Agent': USER_AGENT,
-        'Accept-Language': 'en'
+    const promptPayload = {
+      siteName: String(req.body?.siteName || 'NYU Abu Dhabi campus'),
+      nowIso: String(req.body?.nowIso || new Date().toISOString()),
+      redWorker,
+      candidateWorkers: candidates
+    };
+
+    const modelOutput = await callGroqForJson({
+      systemPrompt: [
+        'You are an operations safety planner for construction sites.',
+        'Return strict JSON only.',
+        'You must reduce fatigue and risk for red-status workers losing focus.',
+        'Prefer shaded zones, lighter loads, and lower crowd areas.',
+        'The reassignment must affect exactly two workers: one red and one green.'
+      ].join(' '),
+      userPayload: promptPayload,
+      schemaHint: {
+        summary: 'string',
+        rationale: 'string',
+        helperWorkerId: 'string',
+        redWorkerTask: {
+          start: 'HH:MM',
+          end: 'HH:MM',
+          title: 'string',
+          details: 'string',
+          load: 'light|medium|heavy',
+          zone: 'string',
+          sunExposure: 'low|medium|high',
+          crowdLevel: 'low|medium|high'
+        },
+        helperWorkerTask: {
+          start: 'HH:MM',
+          end: 'HH:MM',
+          title: 'string',
+          details: 'string',
+          load: 'light|medium|heavy',
+          zone: 'string',
+          sunExposure: 'low|medium|high',
+          crowdLevel: 'low|medium|high'
+        }
       }
     });
 
-    const items = results.map((item) => ({
-      label: item.display_name,
-      lat: Number(item.lat),
-      lng: Number(item.lon)
-    })).filter((item) => Number.isFinite(item.lat) && Number.isFinite(item.lng));
-
-    res.json({ items });
+    const proposal = normalizeSwitchProposal(modelOutput, redWorker, candidates);
+    res.json({ proposal });
   } catch (error) {
-    res.status(502).json({ error: `Geocoding failed: ${error.message}` });
+    res.status(502).json({ error: `Failed to generate reassignment proposal: ${error.message}` });
   }
 });
 
-app.get('/api/reverse-geocode', async (req, res) => {
-  const lat = Number(req.query.lat);
-  const lng = Number(req.query.lng);
-
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    res.status(400).json({ error: 'Invalid coordinates. Expect lat and lng query params.' });
+app.post('/api/llm/generate-task', async (req, res) => {
+  if (!GROQ_API_KEY) {
+    res.status(503).json({ error: 'GROQ_API_KEY is not configured on the server.' });
     return;
   }
 
-  const url = new URL('https://nominatim.openstreetmap.org/reverse');
-  url.searchParams.set('lat', String(lat));
-  url.searchParams.set('lon', String(lng));
-  url.searchParams.set('format', 'jsonv2');
-  url.searchParams.set('zoom', '18');
-  url.searchParams.set('addressdetails', '1');
-  url.searchParams.set('accept-language', 'en');
+  const worker = normalizeWorkerContext(req.body?.worker);
+  const prompt = String(req.body?.prompt || '').trim();
+
+  if (!worker) {
+    res.status(400).json({ error: 'Invalid worker payload.' });
+    return;
+  }
+
+  if (!prompt) {
+    res.status(400).json({ error: 'Prompt is required.' });
+    return;
+  }
 
   try {
-    const item = await fetchJson(url.toString(), {
-      headers: {
-        'User-Agent': USER_AGENT,
-        'Accept-Language': 'en'
+    const promptPayload = {
+      nowIso: String(req.body?.nowIso || new Date().toISOString()),
+      instruction: prompt,
+      worker
+    };
+
+    const modelOutput = await callGroqForJson({
+      systemPrompt: [
+        'You are an operations planner assistant for construction tasks.',
+        'Return strict JSON only.',
+        'Generate one improved task based on user prompt and worker context.',
+        'Task must reduce operational risk where possible.'
+      ].join(' '),
+      userPayload: promptPayload,
+      schemaHint: {
+        summary: 'string',
+        rationale: 'string',
+        task: {
+          start: 'HH:MM',
+          end: 'HH:MM',
+          title: 'string',
+          details: 'string',
+          load: 'light|medium|heavy',
+          zone: 'string',
+          sunExposure: 'low|medium|high',
+          crowdLevel: 'low|medium|high'
+        }
       }
     });
 
-    res.json({
-      label: item?.display_name || `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
-      lat: Number(item?.lat ?? lat),
-      lng: Number(item?.lon ?? lng)
-    });
+    const proposal = normalizeGeneratedTaskProposal(modelOutput, worker);
+    res.json({ proposal });
   } catch (error) {
-    res.status(502).json({ error: `Reverse geocoding failed: ${error.message}` });
-  }
-});
-
-app.post('/api/optimize-route', async (req, res) => {
-  const from = normalizePoint(req.body?.from);
-  const to = normalizePoint(req.body?.to);
-  const autoPod = Boolean(req.body?.autoPod);
-
-  if (!from || !to) {
-    res.status(400).json({ error: 'Invalid coordinates. Expect {from:{lat,lng}, to:{lat,lng}}.' });
-    return;
-  }
-
-  try {
-    const now = new Date();
-    const routeCandidates = await buildRouteCandidates(from, to);
-
-    if (!routeCandidates.length) {
-      res.status(502).json({ error: 'No walking routes found between the selected points.' });
-      return;
-    }
-
-    const bbox = expandBBox(computeRoutesBBox(routeCandidates), 0.0025);
-    let buildings = [];
-    let buildingDataWarning = null;
-    try {
-      buildings = await fetchBuildingsFromOverpass(bbox);
-    } catch (error) {
-      buildingDataWarning = `Building shadow data unavailable (${error.message}). Using route-only fallback.`;
-    }
-    const projection = buildProjectionContext(bbox);
-    const projectedBuildings = projectBuildings(buildings, projection);
-
-    const evaluated = routeCandidates.map((route) => evaluateRouteShade(route, projectedBuildings, projection, now));
-    const shortestDistance = Math.min(...evaluated.map((route) => route.distance));
-
-    for (const route of evaluated) {
-      const extraFactor = (route.distance - shortestDistance) / Math.max(shortestDistance, 1);
-      route.score = route.shadeRatio - (Math.max(0, extraFactor) * 0.38);
-    }
-
-    evaluated.sort((a, b) => b.score - a.score);
-    const best = evaluated[0];
-
-    const remainingAfterShadeM = best.shadowEnd ? Math.max(0, best.distance - best.shadowEnd.distanceAlong) : best.distance;
-    const podPickup = best.shadowEnd
-      ? { lat: best.shadowEnd.point[0], lng: best.shadowEnd.point[1] }
-      : { lat: best.latLngGeometry[0][0], lng: best.latLngGeometry[0][1] };
-    let podDispatch = null;
-
-    if (autoPod && remainingAfterShadeM >= 500) {
-      podDispatch = simulatePodDispatch({
-        pickup: podPickup,
-        destination: to,
-        remainingMeters: remainingAfterShadeM,
-        now
-      });
-    }
-
-    res.json({
-      generatedAt: now.toISOString(),
-      sun: {
-        altitudeDeg: Number(best.sun.altitudeDeg.toFixed(2)),
-        azimuthDeg: Number(best.sun.azimuthDeg.toFixed(2)),
-        isDaylight: best.sun.altitudeDeg > 0
-      },
-      summary: {
-        distanceMeters: Math.round(best.distance),
-        durationMinutes: Math.round(estimateWalkingDurationSeconds(best.distance) / 60),
-        shadedMeters: Math.round(best.shadedDistance),
-        sunnyMeters: Math.round(best.distance - best.shadedDistance),
-        shadeRatio: Number((best.shadeRatio * 100).toFixed(1))
-      },
-      bestRoute: {
-        name: best.name,
-        geometry: best.latLngGeometry,
-        segmentGroups: best.segmentGroups,
-        shadowEnd: best.shadowEnd ? {
-          point: best.shadowEnd.point,
-          remainingMeters: Math.round(remainingAfterShadeM)
-        } : null
-      },
-      alternatives: evaluated.slice(0, 5).map((route) => ({
-        name: route.name,
-        distanceMeters: Math.round(route.distance),
-        durationMinutes: Math.round(estimateWalkingDurationSeconds(route.distance) / 60),
-        shadeRatio: Number((route.shadeRatio * 100).toFixed(1)),
-        score: Number(route.score.toFixed(3))
-      })),
-      podDispatch,
-      warnings: buildingDataWarning ? [buildingDataWarning] : []
-    });
-  } catch (error) {
-    res.status(500).json({ error: `Route optimization failed: ${error.message}` });
+    res.status(502).json({ error: `Failed to generate prompt-based task: ${error.message}` });
   }
 });
 
@@ -235,382 +206,296 @@ app.listen(PORT, () => {
   console.log(`Cool Routes server running at http://localhost:${PORT}`);
 });
 
-function normalizePoint(point) {
-  const lat = Number(point?.lat);
-  const lng = Number(point?.lng);
-
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+function normalizeWorkerContext(input) {
+  if (!input || typeof input !== 'object') {
     return null;
   }
 
-  return { lat, lng };
-}
+  const id = String(input.id || '').trim();
+  const name = String(input.name || '').trim();
+  const role = String(input.role || '').trim();
+  const status = String(input.status || '').trim();
 
-async function buildRouteCandidates(from, to) {
-  const directRoutes = await fetchOsrmRoutes([from, to], { alternatives: true });
-  const collected = [...directRoutes];
-
-  if (!directRoutes.length) {
-    return [];
+  if (!id || !name || !role || !status) {
+    return null;
   }
 
-  const bearing = bearingDegrees(from, to);
-  const midpoint = {
-    lat: (from.lat + to.lat) / 2,
-    lng: (from.lng + to.lng) / 2
+  const location = {
+    lat: Number(input.location?.lat),
+    lng: Number(input.location?.lng)
   };
 
-  const offsetsMeters = [120, -120, 220, -220, 320, -320];
-  const viaPoints = offsetsMeters.map((offset) => {
-    const perpendicular = normalizeBearing(bearing + (offset >= 0 ? 90 : -90));
-    return destinationPoint(midpoint, perpendicular, Math.abs(offset));
-  });
-
-  const detourRequests = viaPoints.map(async (via) => {
-    const routes = await fetchOsrmRoutes([from, via, to], { alternatives: false });
-    return routes[0] || null;
-  });
-
-  const detours = await Promise.allSettled(detourRequests);
-  for (const result of detours) {
-    if (result.status === 'fulfilled' && result.value) {
-      collected.push(result.value);
-    }
-  }
-
-  const shortest = Math.min(...collected.map((route) => route.distance));
-  const deduped = dedupeRoutes(collected)
-    .filter((route) => route.distance <= shortest * 1.65)
-    .map((route, index) => ({
-      ...route,
-      name: index === 0 ? 'Primary' : `Candidate ${index}`
-    }));
-
-  return deduped;
-}
-
-async function fetchOsrmRoutes(points, options = {}) {
-  const coords = points.map((point) => `${point.lng},${point.lat}`).join(';');
-  const url = new URL(`https://router.project-osrm.org/route/v1/foot/${coords}`);
-  url.searchParams.set('overview', 'full');
-  url.searchParams.set('geometries', 'geojson');
-  url.searchParams.set('steps', 'false');
-  url.searchParams.set('alternatives', options.alternatives ? 'true' : 'false');
-
-  const data = await fetchJson(url.toString(), {
-    headers: {
-      'User-Agent': USER_AGENT
-    }
-  });
-
-  const routes = Array.isArray(data.routes) ? data.routes : [];
-  return routes
-    .filter((route) => route.geometry?.coordinates?.length >= 2)
-    .map((route) => ({
-      distance: Number(route.distance),
-      duration: Number(route.duration),
-      geometry: route.geometry.coordinates.map(([lng, lat]) => ({ lat, lng }))
-    }));
-}
-
-function dedupeRoutes(routes) {
-  const seen = new Set();
-  const out = [];
-
-  for (const route of routes) {
-    const hash = routeHash(route.geometry);
-    if (seen.has(hash)) {
-      continue;
-    }
-    seen.add(hash);
-    out.push(route);
-  }
-
-  return out;
-}
-
-function routeHash(geometry) {
-  const stride = Math.max(1, Math.floor(geometry.length / 25));
-  const points = [];
-
-  for (let i = 0; i < geometry.length; i += stride) {
-    const point = geometry[i];
-    points.push(`${point.lat.toFixed(4)},${point.lng.toFixed(4)}`);
-  }
-
-  const end = geometry[geometry.length - 1];
-  points.push(`${end.lat.toFixed(4)},${end.lng.toFixed(4)}`);
-  return points.join('|');
-}
-
-function evaluateRouteShade(route, buildings, projection, now) {
-  const latLngGeometry = route.geometry.map((point) => [point.lat, point.lng]);
-  const sunRef = route.geometry[Math.floor(route.geometry.length / 2)] || route.geometry[0];
-  const sunPosition = SunCalc.getPosition(now, sunRef.lat, sunRef.lng);
-  const altitudeDeg = radiansToDegrees(sunPosition.altitude);
-  const azimuthDeg = normalizeBearing(radiansToDegrees(sunPosition.azimuth) + 180);
-  const tanAltitude = Math.tan(sunPosition.altitude);
-  const sunlightDirection = bearingToUnitVector(azimuthDeg);
-
-  const samples = sampleRoute(route.geometry, projection, 12);
-  if (!samples.length) {
-    return {
-      ...route,
-      latLngGeometry,
-      sun: { altitudeDeg, azimuthDeg },
-      shadedDistance: 0,
-      shadeRatio: 0,
-      segmentGroups: [],
-      shadowEnd: null
-    };
-  }
-
-  if (altitudeDeg <= 0) {
-    const allShadedGroups = buildSegmentGroups(samples, true);
-    return {
-      ...route,
-      latLngGeometry,
-      sun: { altitudeDeg, azimuthDeg },
-      shadedDistance: route.distance,
-      shadeRatio: 1,
-      segmentGroups: allShadedGroups,
-      shadowEnd: {
-        point: samples[samples.length - 1].latLng,
-        distanceAlong: route.distance
-      }
-    };
-  }
-
-  const enrichedBuildings = buildings.map((building) => ({
-    ...building,
-    maxShadowLength: Math.max(0, Math.min(500, building.height / Math.max(tanAltitude, 0.01)))
-  }));
-
-  for (const sample of samples) {
-    sample.shaded = isPointShaded(sample.xy, enrichedBuildings, sunlightDirection);
-  }
-
-  let shadedDistance = 0;
-  for (let i = 1; i < samples.length; i += 1) {
-    const segmentDistance = samples[i].distanceAlong - samples[i - 1].distanceAlong;
-    if (samples[i - 1].shaded && samples[i].shaded) {
-      shadedDistance += segmentDistance;
-    }
-  }
-
-  const segmentGroups = buildSegmentGroups(samples, false);
-  const coolPathEnd = determineCoolPathEnd(samples);
+  const currentTask = normalizeTask(input.currentTask || null);
+  const upcomingTasks = Array.isArray(input.upcomingTasks)
+    ? input.upcomingTasks.map((task) => normalizeTask(task)).filter(Boolean)
+    : [];
 
   return {
-    ...route,
-    latLngGeometry,
-    sun: { altitudeDeg, azimuthDeg },
-    shadedDistance,
-    shadeRatio: shadedDistance / Math.max(route.distance, 1),
-    segmentGroups,
-    shadowEnd: coolPathEnd ? {
-      point: coolPathEnd.latLng,
-      distanceAlong: coolPathEnd.distanceAlong
-    } : null
+    id,
+    name,
+    role,
+    status,
+    focusLevel: normalizeEnum(input.focusLevel, ['low', 'medium', 'high'], 'medium'),
+    energyLevel: normalizeEnum(input.energyLevel, ['low', 'medium', 'high'], 'medium'),
+    sunExposure: normalizeEnum(input.sunExposure, ['low', 'medium', 'high'], 'medium'),
+    crowdLevel: normalizeEnum(input.crowdLevel, ['low', 'medium', 'high'], 'medium'),
+    zone: String(input.zone || 'General zone').trim(),
+    location,
+    currentTask,
+    upcomingTasks
   };
 }
 
-function determineCoolPathEnd(samples) {
-  if (!samples.length) {
-    return null;
-  }
-
-  // "Cool path" is the initial shade-first walking section.
-  if (!samples[0].shaded) {
-    return null;
-  }
-
-  let best = samples[0];
-  let sunnyBreak = 0;
-
-  for (let i = 1; i < samples.length; i += 1) {
-    const segmentDistance = samples[i].distanceAlong - samples[i - 1].distanceAlong;
-    if (samples[i - 1].shaded && samples[i].shaded) {
-      best = samples[i];
-      sunnyBreak = 0;
-      continue;
+function normalizeTask(input, fallback = null) {
+  if (!input || typeof input !== 'object') {
+    if (!fallback) {
+      return null;
     }
 
-    sunnyBreak += segmentDistance;
-    if (sunnyBreak >= 50) {
-      break;
-    }
+    return {
+      start: fallback.start,
+      end: fallback.end,
+      title: fallback.title,
+      details: fallback.details,
+      load: fallback.load,
+      zone: fallback.zone,
+      sunExposure: fallback.sunExposure,
+      crowdLevel: fallback.crowdLevel
+    };
   }
 
-  return best;
+  const base = fallback || {
+    start: '13:00',
+    end: '14:00',
+    title: 'Adjusted site task',
+    details: 'Updated by AI planner.',
+    load: 'light',
+    zone: 'Shaded corridor',
+    sunExposure: 'low',
+    crowdLevel: 'low'
+  };
+
+  return {
+    start: normalizeClock(input.start, base.start),
+    end: normalizeClock(input.end, base.end),
+    title: String(input.title || base.title).trim(),
+    details: String(input.details || base.details).trim(),
+    load: normalizeEnum(input.load, ['light', 'medium', 'heavy'], base.load),
+    zone: String(input.zone || base.zone).trim(),
+    sunExposure: normalizeEnum(input.sunExposure, ['low', 'medium', 'high'], base.sunExposure),
+    crowdLevel: normalizeEnum(input.crowdLevel, ['low', 'medium', 'high'], base.crowdLevel)
+  };
 }
 
-function buildSegmentGroups(samples, forceShaded) {
-  if (samples.length < 2) {
-    return [];
-  }
+function normalizeSwitchProposal(raw, redWorker, candidates) {
+  const nearestCandidate = findNearestWorker(redWorker.location, candidates);
+  const helperCandidate = candidates.find((worker) => worker.id === String(raw?.helperWorkerId || '').trim()) || nearestCandidate || candidates[0];
 
-  const groups = [];
-  let active = null;
+  const redSlotFallback = redWorker.currentTask || redWorker.upcomingTasks[0] || {
+    start: '13:00',
+    end: '14:00',
+    title: 'Shaded inspection walk',
+    details: 'Lower-risk focus recovery task.',
+    load: 'light',
+    zone: 'Shaded corridor',
+    sunExposure: 'low',
+    crowdLevel: 'low'
+  };
 
-  for (let i = 1; i < samples.length; i += 1) {
-    const prev = samples[i - 1];
-    const current = samples[i];
-    const shaded = forceShaded ? true : (prev.shaded && current.shaded);
+  const helperSlotFallback = helperCandidate.currentTask || helperCandidate.upcomingTasks[0] || {
+    start: redSlotFallback.start,
+    end: redSlotFallback.end,
+    title: 'Task takeover in active zone',
+    details: 'Temporary takeover to stabilize progress.',
+    load: 'medium',
+    zone: redWorker.zone,
+    sunExposure: 'medium',
+    crowdLevel: 'medium'
+  };
 
-    if (!active || active.shaded !== shaded) {
-      active = {
-        shaded,
-        points: [prev.latLng, current.latLng]
-      };
-      groups.push(active);
-    } else {
-      active.points.push(current.latLng);
-    }
-  }
+  const redWorkerTask = normalizeTask(raw?.redWorkerTask || raw?.redWorkerReplacementTask, redSlotFallback);
+  const helperWorkerTask = normalizeTask(raw?.helperWorkerTask || raw?.greenWorkerTask, helperSlotFallback);
 
-  return groups;
+  return {
+    id: `switch-${Date.now()}`,
+    redWorkerId: redWorker.id,
+    helperWorkerId: helperCandidate.id,
+    summary: String(raw?.summary || `Switch ${redWorker.name} to a lighter task in a safer zone and assign takeover to ${helperCandidate.name}.`).trim(),
+    rationale: String(raw?.rationale || 'Reassignment reduces fatigue risk, heat exposure, and crowd pressure while preserving output.').trim(),
+    affectedWorkerIds: [redWorker.id, helperCandidate.id],
+    workerUpdates: [
+      {
+        workerId: redWorker.id,
+        status: 'yellow',
+        task: redWorkerTask
+      },
+      {
+        workerId: helperCandidate.id,
+        status: 'yellow',
+        task: helperWorkerTask
+      }
+    ]
+  };
 }
 
-function sampleRoute(routeGeometry, projection, stepMeters) {
-  if (!Array.isArray(routeGeometry) || routeGeometry.length < 2) {
-    return [];
-  }
+function normalizeGeneratedTaskProposal(raw, worker) {
+  const fallbackTask = worker.currentTask || worker.upcomingTasks[0] || {
+    start: '14:00',
+    end: '15:00',
+    title: 'AI-adjusted support task',
+    details: 'Generated from prompt with risk-aware constraints.',
+    load: 'light',
+    zone: 'Shaded corridor',
+    sunExposure: 'low',
+    crowdLevel: 'low'
+  };
 
-  const projected = routeGeometry.map((point) => projection.project(point));
-  const output = [];
-  let distanceAlong = 0;
-
-  output.push({
-    latLng: [routeGeometry[0].lat, routeGeometry[0].lng],
-    xy: projected[0],
-    distanceAlong: 0
-  });
-
-  let carry = stepMeters;
-  for (let i = 1; i < projected.length; i += 1) {
-    const a = projected[i - 1];
-    const b = projected[i];
-    const segLength = distance2d(a, b);
-
-    if (segLength < 0.001) {
-      continue;
-    }
-
-    while (carry <= segLength) {
-      const t = carry / segLength;
-      const xy = {
-        x: a.x + (b.x - a.x) * t,
-        y: a.y + (b.y - a.y) * t
-      };
-      const latLng = projection.unproject(xy);
-      output.push({
-        latLng: [latLng.lat, latLng.lng],
-        xy,
-        distanceAlong: distanceAlong + carry
-      });
-      carry += stepMeters;
-    }
-
-    distanceAlong += segLength;
-    carry -= segLength;
-  }
-
-  const lastPoint = routeGeometry[routeGeometry.length - 1];
-  const lastProjected = projected[projected.length - 1];
-  const lastSample = output[output.length - 1];
-
-  if (!lastSample || distance2d(lastSample.xy, lastProjected) > 1.0) {
-    output.push({
-      latLng: [lastPoint.lat, lastPoint.lng],
-      xy: lastProjected,
-      distanceAlong
-    });
-  }
-
-  return output;
+  return {
+    id: `prompt-${Date.now()}`,
+    workerId: worker.id,
+    summary: String(raw?.summary || 'Generated a revised task from your prompt.').trim(),
+    rationale: String(raw?.rationale || 'Task tuned for safer workload, zone, and exposure conditions.').trim(),
+    task: normalizeTask(raw?.task || raw?.generatedTask || raw?.proposedTask, fallbackTask)
+  };
 }
 
-function isPointShaded(point, buildings, sunlightDirection) {
-  for (const building of buildings) {
-    if (pointInPolygon(point, building.ring)) {
-      return true;
-    }
-
-    const bboxDistance = minDistanceToBBox(point, building.bbox);
-    if (bboxDistance > building.maxShadowLength + 3) {
-      continue;
-    }
-
-    const hitDistance = rayPolygonFirstHit(point, sunlightDirection, building.ring);
-    if (hitDistance !== null && hitDistance <= building.maxShadowLength + 2) {
-      return true;
-    }
+function normalizeClock(value, fallback) {
+  const text = String(value || '').trim();
+  if (/^\d{2}:\d{2}$/.test(text)) {
+    return text;
   }
 
-  return false;
+  return fallback;
 }
 
-function rayPolygonFirstHit(origin, dir, ring) {
+function normalizeEnum(value, allowed, fallback) {
+  const text = String(value || '').trim().toLowerCase();
+  return allowed.includes(text) ? text : fallback;
+}
+
+function findNearestWorker(origin, workers) {
+  if (!origin || !Number.isFinite(origin.lat) || !Number.isFinite(origin.lng)) {
+    return workers[0] || null;
+  }
+
   let nearest = null;
+  let bestDistance = Infinity;
 
-  for (let i = 1; i < ring.length; i += 1) {
-    const hit = intersectRayWithSegment(origin, dir, ring[i - 1], ring[i]);
-    if (hit !== null && (nearest === null || hit < nearest)) {
-      nearest = hit;
+  for (const worker of workers) {
+    const lat = Number(worker.location?.lat);
+    const lng = Number(worker.location?.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      continue;
+    }
+
+    const distance = haversineMeters(origin.lat, origin.lng, lat, lng);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      nearest = worker;
     }
   }
 
   return nearest;
 }
 
-function intersectRayWithSegment(origin, dir, a, b) {
-  const v = { x: b.x - a.x, y: b.y - a.y };
-  const ap = { x: a.x - origin.x, y: a.y - origin.y };
-  const denominator = cross2d(dir, v);
+function haversineMeters(lat1, lng1, lat2, lng2) {
+  const r = 6371000;
+  const dLat = degreesToRadians(lat2 - lat1);
+  const dLng = degreesToRadians(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(degreesToRadians(lat1)) * Math.cos(degreesToRadians(lat2)) * (Math.sin(dLng / 2) ** 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return r * c;
+}
 
-  if (Math.abs(denominator) < 1e-9) {
+async function callGroqForJson({ systemPrompt, userPayload, schemaHint }) {
+  const body = {
+    model: GROQ_MODEL,
+    temperature: 0.2,
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        content: systemPrompt
+      },
+      {
+        role: 'user',
+        content: [
+          'Return JSON using this schema shape:',
+          JSON.stringify(schemaHint),
+          'Context payload:',
+          JSON.stringify(userPayload)
+        ].join('\n')
+      }
+    ]
+  };
+
+  const response = await fetchWithTimeout(GROQ_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${GROQ_API_KEY}`,
+      'User-Agent': USER_AGENT
+    },
+    body: JSON.stringify(body)
+  }, 25000);
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Groq HTTP ${response.status}: ${text.slice(0, 240)}`);
+  }
+
+  const data = await response.json();
+  const rawContent = data?.choices?.[0]?.message?.content;
+  const parsed = safeJsonParse(rawContent);
+  if (!parsed) {
+    throw new Error('Groq response did not contain valid JSON content.');
+  }
+
+  return parsed;
+}
+
+function safeJsonParse(value) {
+  if (typeof value !== 'string' || !value.trim()) {
     return null;
   }
 
-  const t = cross2d(ap, v) / denominator;
-  const u = cross2d(ap, dir) / denominator;
-
-  if (t >= 0 && u >= 0 && u <= 1) {
-    return t;
+  try {
+    return JSON.parse(value);
+  } catch (_error) {
+    return null;
   }
-
-  return null;
 }
 
-function pointInPolygon(point, ring) {
-  let inside = false;
+async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
-    const xi = ring[i].x;
-    const yi = ring[i].y;
-    const xj = ring[j].x;
-    const yj = ring[j].y;
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
-    const intersects = ((yi > point.y) !== (yj > point.y))
-      && (point.x < ((xj - xi) * (point.y - yi)) / ((yj - yi) || 1e-12) + xi);
-
-    if (intersects) {
-      inside = !inside;
+async function fetchJson(url, options = {}, timeoutMs = 15000) {
+  const response = await fetchWithTimeout(url, {
+    ...options,
+    headers: {
+      'User-Agent': USER_AGENT,
+      ...(options.headers || {})
     }
+  }, timeoutMs);
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`HTTP ${response.status} ${response.statusText}: ${body.slice(0, 240)}`);
   }
 
-  return inside;
-}
-
-function cross2d(a, b) {
-  return a.x * b.y - a.y * b.x;
-}
-
-function minDistanceToBBox(point, bbox) {
-  const dx = point.x < bbox.minX ? bbox.minX - point.x : (point.x > bbox.maxX ? point.x - bbox.maxX : 0);
-  const dy = point.y < bbox.minY ? bbox.minY - point.y : (point.y > bbox.maxY ? point.y - bbox.maxY : 0);
-  return Math.hypot(dx, dy);
+  return await response.json();
 }
 
 async function fetchBuildingsFromOverpass(bbox) {
@@ -626,8 +511,7 @@ async function fetchBuildingsFromOverpass(bbox) {
   const response = await fetchJson('https://overpass-api.de/api/interpreter', {
     method: 'POST',
     headers: {
-      'Content-Type': 'text/plain',
-      'User-Agent': USER_AGENT
+      'Content-Type': 'text/plain'
     },
     body: query
   }, 30000);
@@ -715,137 +599,6 @@ function parseMetric(raw) {
   return null;
 }
 
-function buildProjectionContext(bbox) {
-  const lat0 = (bbox.north + bbox.south) / 2;
-  const lng0 = (bbox.east + bbox.west) / 2;
-  const latScale = 110540;
-  const lngScale = 111320 * Math.cos(degreesToRadians(lat0));
-
-  return {
-    project(point) {
-      return {
-        x: (point.lng - lng0) * lngScale,
-        y: (point.lat - lat0) * latScale
-      };
-    },
-    unproject(point) {
-      return {
-        lat: lat0 + point.y / latScale,
-        lng: lng0 + point.x / lngScale
-      };
-    }
-  };
-}
-
-function projectBuildings(buildings, projection) {
-  const projected = [];
-
-  for (const building of buildings) {
-    const ring = building.ring.map((point) => projection.project(point));
-
-    if (ring.length < 4) {
-      continue;
-    }
-
-    const bbox = {
-      minX: Math.min(...ring.map((point) => point.x)),
-      maxX: Math.max(...ring.map((point) => point.x)),
-      minY: Math.min(...ring.map((point) => point.y)),
-      maxY: Math.max(...ring.map((point) => point.y))
-    };
-
-    projected.push({
-      ring,
-      bbox,
-      height: building.height
-    });
-  }
-
-  return projected;
-}
-
-function computeRoutesBBox(routes) {
-  let north = -Infinity;
-  let south = Infinity;
-  let east = -Infinity;
-  let west = Infinity;
-
-  for (const route of routes) {
-    for (const point of route.geometry) {
-      north = Math.max(north, point.lat);
-      south = Math.min(south, point.lat);
-      east = Math.max(east, point.lng);
-      west = Math.min(west, point.lng);
-    }
-  }
-
-  return { north, south, east, west };
-}
-
-function expandBBox(bbox, paddingDeg) {
-  return {
-    north: bbox.north + paddingDeg,
-    south: bbox.south - paddingDeg,
-    east: bbox.east + paddingDeg,
-    west: bbox.west - paddingDeg
-  };
-}
-
-function bearingToUnitVector(bearingDeg) {
-  const radians = degreesToRadians(bearingDeg);
-  return {
-    x: Math.sin(radians),
-    y: Math.cos(radians)
-  };
-}
-
-function bearingDegrees(a, b) {
-  const lat1 = degreesToRadians(a.lat);
-  const lat2 = degreesToRadians(b.lat);
-  const dLng = degreesToRadians(b.lng - a.lng);
-
-  const y = Math.sin(dLng) * Math.cos(lat2);
-  const x = Math.cos(lat1) * Math.sin(lat2)
-    - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
-
-  return normalizeBearing(radiansToDegrees(Math.atan2(y, x)));
-}
-
-function destinationPoint(start, bearingDeg, distanceMeters) {
-  const angularDistance = distanceMeters / 6371000;
-  const bearingRad = degreesToRadians(bearingDeg);
-  const lat1 = degreesToRadians(start.lat);
-  const lng1 = degreesToRadians(start.lng);
-
-  const sinLat1 = Math.sin(lat1);
-  const cosLat1 = Math.cos(lat1);
-  const sinAd = Math.sin(angularDistance);
-  const cosAd = Math.cos(angularDistance);
-
-  const lat2 = Math.asin(sinLat1 * cosAd + cosLat1 * sinAd * Math.cos(bearingRad));
-  const lng2 = lng1 + Math.atan2(
-    Math.sin(bearingRad) * sinAd * cosLat1,
-    cosAd - sinLat1 * Math.sin(lat2)
-  );
-
-  return {
-    lat: radiansToDegrees(lat2),
-    lng: radiansToDegrees(lng2)
-  };
-}
-
-function normalizeBearing(value) {
-  return ((value % 360) + 360) % 360;
-}
-
-function distance2d(a, b) {
-  return Math.hypot(b.x - a.x, b.y - a.y);
-}
-
-function samePoint(a, b) {
-  return Math.abs(a.lat - b.lat) < 1e-9 && Math.abs(a.lng - b.lng) < 1e-9;
-}
-
 function simplifyRing(ring) {
   if (!Array.isArray(ring) || ring.length < 4) {
     return ring || [];
@@ -876,62 +629,14 @@ function simplifyRing(ring) {
   return reduced.length >= 4 ? reduced : ring;
 }
 
-function simulatePodDispatch({ pickup, destination, remainingMeters, now }) {
-  const vehicleType = remainingMeters > 1200 ? 'micro-pod' : 'e-scooter';
-  const etaMinutes = clamp(Math.round(2 + remainingMeters / 260), 3, 14);
-  const dispatchId = `POD-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-  const etaAt = new Date(now.getTime() + etaMinutes * 60000);
-
-  return {
-    dispatched: true,
-    dispatchId,
-    vehicleType,
-    etaMinutes,
-    etaAt: etaAt.toISOString(),
-    pickup,
-    destination,
-    message: `${vehicleType} auto-dispatched to shadow exit point (${Math.round(remainingMeters)}m remaining in direct sun).`
-  };
-}
-
-function estimateWalkingDurationSeconds(distanceMeters) {
-  // 1.32 m/s ~= 4.75 km/h urban walking pace.
-  return distanceMeters / 1.32;
+function samePoint(a, b) {
+  return Math.abs(a.lat - b.lat) < 1e-9 && Math.abs(a.lng - b.lng) < 1e-9;
 }
 
 function degreesToRadians(value) {
   return value * (Math.PI / 180);
 }
 
-function radiansToDegrees(value) {
-  return value * (180 / Math.PI);
-}
-
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
-}
-
-async function fetchJson(url, options = {}, timeoutMs = 15000) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal,
-      headers: {
-        'User-Agent': USER_AGENT,
-        ...(options.headers || {})
-      }
-    });
-
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`HTTP ${response.status} ${response.statusText}: ${body.slice(0, 200)}`);
-    }
-
-    return await response.json();
-  } finally {
-    clearTimeout(timeout);
-  }
 }

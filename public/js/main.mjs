@@ -1,13 +1,15 @@
 import {
   getRuntimeConfig,
-  geocodeFirst,
-  optimizeRoute,
-  reverseGeocode,
-  fetchBuildingFeatures
+  requestAttentionSwitchProposal,
+  requestPromptTaskProposal
 } from './api/client.mjs';
-import { DEFAULT_CENTER, DEFAULT_ZOOM } from './constants.mjs';
-import { RouteRenderer } from './map/routeRenderer.mjs';
-import { ShadeController } from './map/shadeController.mjs';
+import {
+  DEFAULT_CENTER,
+  DEFAULT_ZOOM,
+  FIXED_WORK_HOUR,
+  FIXED_WORK_MINUTE
+} from './constants.mjs';
+import { NYUAD_WORKERS, WorkerOverlay, cloneWorkers } from './map/workerOverlay.mjs';
 import { mountAppShell } from './ui/appShell.mjs';
 import { getDomRefs } from './ui/dom.mjs';
 import { createUiController } from './ui/controller.mjs';
@@ -23,7 +25,7 @@ requestAnimationFrame(() => startWhenDomReady());
 
 function startWhenDomReady(attempt = 0) {
   const dom = getDomRefs();
-  if (!dom.form || !document.getElementById('map')) {
+  if (!dom.statusBox || !document.getElementById('map')) {
     if (attempt < 5) {
       requestAnimationFrame(() => startWhenDomReady(attempt + 1));
       return;
@@ -37,6 +39,13 @@ function startWhenDomReady(attempt = 0) {
 
 function startApp(dom) {
   const ui = createUiController(dom);
+  const state = {
+    workers: cloneWorkers(NYUAD_WORKERS),
+    selectedWorkerId: null,
+    switchProposal: null,
+    generatedTaskProposal: null,
+    groqEnabled: false
+  };
 
   const map = L.map('map', { zoomControl: false }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
@@ -46,20 +55,19 @@ function startApp(dom) {
   }).addTo(map);
   L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-  const routeRenderer = new RouteRenderer(map);
-  const shadeController = new ShadeController({
-    map,
-    apiClient: { fetchBuildingFeatures },
-    dom,
-    onStatus: (message) => ui.setStatus(message)
+  const workerOverlay = new WorkerOverlay(map, {
+    workers: state.workers,
+    onSelect: (workerId) => {
+      state.selectedWorkerId = workerId;
+      state.switchProposal = null;
+      renderUi();
+      ui.setStatus(`Selected ${getSelectedWorker()?.name || 'worker'}.`);
+    }
   });
 
-  const state = {
-    pickMode: null,
-    fromSelection: null,
-    toSelection: null,
-    runtimeConfigLoaded: false
-  };
+  workerOverlay.render({ focus: true });
+  state.selectedWorkerId = pickInitialWorkerId(state.workers);
+  renderUi();
 
   wireEvents();
   void bootstrap();
@@ -67,201 +75,487 @@ function startApp(dom) {
   async function bootstrap() {
     try {
       const runtimeConfig = await getRuntimeConfig();
-      state.runtimeConfigLoaded = true;
+      state.groqEnabled = Boolean(runtimeConfig?.groqEnabled);
+      renderUi();
 
-      await shadeController.init(runtimeConfig);
-      ui.setStatus('ShadeMap connected. Enter addresses or use map pick mode.');
+      if (state.groqEnabled) {
+        ui.setStatus('Worker board ready. Red workers can receive AI reassignment proposals.');
+      } else {
+        ui.setStatus('Worker board ready. Set GROQ_API_KEY on server to enable AI proposals.');
+      }
     } catch (error) {
-      ui.setStatus(error.message, true);
+      ui.setStatus(error.message || 'Failed to load runtime config.', true);
     }
   }
 
   function wireEvents() {
-    dom.form.addEventListener('submit', onRouteSubmit);
-
-    dom.swapBtn.addEventListener('click', onSwapLocations);
-    dom.clearBtn.addEventListener('click', clearAllSelections);
-    dom.pickFromBtn.addEventListener('click', () => togglePickMode('from'));
-    dom.pickToBtn.addEventListener('click', () => togglePickMode('to'));
-
-    dom.fromInput.addEventListener('input', () => {
-      state.fromSelection = null;
-      syncDraftMarkers();
+    dom.openAllPlansBtn.addEventListener('click', () => {
+      ui.renderAllPlans(state.workers, getFixedNow());
+      ui.toggleAllPlans(true);
     });
 
-    dom.toInput.addEventListener('input', () => {
-      state.toSelection = null;
-      syncDraftMarkers();
+    dom.closeAllPlansBtn.addEventListener('click', () => {
+      ui.toggleAllPlans(false);
     });
 
-    dom.incrementBtn.addEventListener('click', () => shadeController.shiftHours(1));
-    dom.decrementBtn.addEventListener('click', () => shadeController.shiftHours(-1));
-    dom.playBtn.addEventListener('click', () => shadeController.startPlayback());
-    dom.stopBtn.addEventListener('click', () => shadeController.stopPlayback());
-    dom.exposureCheckbox.addEventListener('change', () => shadeController.applyExposureMode());
+    dom.allPlansWindow.addEventListener('click', (event) => {
+      if (event.target === dom.allPlansWindow) {
+        ui.toggleAllPlans(false);
+      }
+    });
 
-    map.on('click', onMapClickForLocation);
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        ui.toggleAllPlans(false);
+      }
+    });
+
+    dom.generateSwitchBtn.addEventListener('click', () => {
+      void generateSwitchProposal();
+    });
+
+    dom.acceptSwitchBtn.addEventListener('click', () => {
+      acceptSwitchProposal();
+    });
+
+    dom.rejectSwitchBtn.addEventListener('click', () => {
+      rejectSwitchProposal();
+    });
+
+    dom.generateTaskBtn.addEventListener('click', () => {
+      void generatePromptTask();
+    });
+
+    dom.acceptGeneratedTaskBtn.addEventListener('click', () => {
+      acceptGeneratedTask();
+    });
+
+    dom.rejectGeneratedTaskBtn.addEventListener('click', () => {
+      rejectGeneratedTask();
+    });
+
+    dom.openWorkerDetailsBtn.addEventListener('click', () => {
+      openWorkerDetails();
+    });
   }
 
-  async function onRouteSubmit(event) {
-    event.preventDefault();
+  function renderUi() {
+    const now = getFixedNow();
+    const selectedWorker = getSelectedWorker();
+    const workerNameById = Object.fromEntries(state.workers.map((worker) => [worker.id, worker.name]));
+    const aiEnabled = state.groqEnabled;
 
-    const fromText = dom.fromInput.value.trim();
-    const toText = dom.toInput.value.trim();
+    ui.setSelectedWorker(selectedWorker, now);
+    ui.renderAllPlans(state.workers, now);
 
-    if (!fromText || !toText) {
-      ui.setStatus('Both A and B locations are required.', true);
+    const isRedWorker = selectedWorker?.status === 'red';
+    const availabilityReason = !aiEnabled
+      ? 'AI features are disabled until GROQ_API_KEY is configured on the server.'
+      : (isRedWorker
+        ? 'This red worker is losing focus. AI proposes safer two-worker swaps with lighter load and lower exposure.'
+        : 'AI reassignment appears only for red workers who are losing focus.');
+
+    ui.setAttentionAdvisorState({
+      enabled: Boolean(isRedWorker && aiEnabled),
+      loading: false,
+      reason: availabilityReason
+    });
+
+    dom.taskPromptInput.disabled = !aiEnabled;
+    dom.generateTaskBtn.disabled = !aiEnabled;
+    dom.generateTaskBtn.textContent = aiEnabled ? 'Generate Task From Prompt' : 'Groq Key Required';
+
+    if (state.switchProposal && isRedWorker && state.switchProposal.redWorkerId === selectedWorker.id) {
+      ui.setSwitchProposal(state.switchProposal, workerNameById);
+    } else {
+      ui.setSwitchProgress([]);
+      ui.clearSwitchProposal();
+      state.switchProposal = null;
+    }
+
+    if (state.generatedTaskProposal && state.generatedTaskProposal.workerId === selectedWorker?.id) {
+      ui.setGeneratedTaskProposal(state.generatedTaskProposal);
+    } else {
+      ui.setTaskProgress([]);
+      ui.clearGeneratedTaskProposal();
+      state.generatedTaskProposal = null;
+    }
+  }
+
+  async function generateSwitchProposal() {
+    if (!state.groqEnabled) {
+      ui.setStatus('GROQ_API_KEY is required to generate AI reassignment proposals.', true);
       return;
     }
 
+    const selectedWorker = getSelectedWorker();
+    if (!selectedWorker) {
+      ui.setStatus('Select a worker first.', true);
+      return;
+    }
+
+    if (selectedWorker.status !== 'red') {
+      ui.setStatus('AI reassignment is available only for red workers.', true);
+      return;
+    }
+
+    const candidateWorkers = state.workers.filter((worker) => worker.status === 'green' && worker.id !== selectedWorker.id);
+    if (!candidateWorkers.length) {
+      ui.setStatus('No green worker available for safe reassignment right now.', true);
+      return;
+    }
+
+    ui.setAttentionAdvisorState({
+      enabled: true,
+      loading: true,
+      reason: 'Analyzing worker risk, location, sunlight, and crowd profile...'
+    });
+
+    const progressLines = [];
+
     try {
-      ui.setLoading(true);
+      progressLines.push('1/4 Collecting worker context and current timeline.');
+      ui.setSwitchProgress(progressLines);
+      await pause(160);
 
-      const from = await resolveLocation('from', fromText);
-      const to = await resolveLocation('to', toText);
+      progressLines.push('2/4 Comparing nearby green workers for safe swap.');
+      ui.setSwitchProgress(progressLines);
+      await pause(160);
 
-      if (!from || !to) {
-        throw new Error('Unable to resolve one or both locations. Try another query or map pick.');
-      }
+      progressLines.push('3/4 Calling Groq model for reassignment decision.');
+      ui.setSwitchProgress(progressLines);
 
-      ui.setStatus('Calculating shadow-optimized route...');
-      const result = await optimizeRoute(from, to, dom.autoPodInput.checked);
+      const now = getFixedNow();
+      const proposal = await requestAttentionSwitchProposal({
+        siteName: 'NYU Abu Dhabi campus',
+        nowIso: now.toISOString(),
+        redWorker: buildWorkerContext(selectedWorker, now),
+        candidateWorkers: candidateWorkers.map((worker) => buildWorkerContext(worker, now))
+      });
 
-      routeRenderer.renderRoute(result, from, to);
-      ui.updateSummary(result.summary);
-      ui.updatePod(result.podDispatch, result.bestRoute.shadowEnd);
-      ui.updateAlternatives(result.alternatives);
+      progressLines.push('4/4 Preparing final impact summary (2 workers affected).');
+      ui.setSwitchProgress(progressLines);
 
-      if (result.generatedAt) {
-        shadeController.setDate(new Date(result.generatedAt), false);
-      }
-
-      const warning = Array.isArray(result.warnings) && result.warnings.length ? ` ${result.warnings[0]}` : '';
-      ui.setStatus(`Route ready. ${result.summary.shadeRatio}% in shade at current time.${warning}`);
+      state.switchProposal = proposal;
+      ui.setSwitchProposal(proposal, Object.fromEntries(state.workers.map((worker) => [worker.id, worker.name])));
+      ui.setStatus('AI reassignment proposal is ready. Review and accept/reject.');
     } catch (error) {
-      ui.setStatus(error.message || 'Route generation failed.', true);
+      ui.setStatus(error.message || 'Failed to generate reassignment proposal.', true);
     } finally {
-      ui.setLoading(false);
+      const latestWorker = getSelectedWorker();
+      ui.setAttentionAdvisorState({
+        enabled: Boolean(latestWorker?.status === 'red' && state.groqEnabled),
+        loading: false,
+        reason: !state.groqEnabled
+          ? 'AI features are disabled until GROQ_API_KEY is configured on the server.'
+          : (latestWorker?.status === 'red'
+            ? 'This red worker is losing focus. AI proposes safer two-worker swaps with lighter load and lower exposure.'
+            : 'AI reassignment appears only for red workers who are losing focus.')
+      });
     }
   }
 
-  function onSwapLocations() {
-    const oldFromText = dom.fromInput.value;
-    dom.fromInput.value = dom.toInput.value;
-    dom.toInput.value = oldFromText;
+  function acceptSwitchProposal() {
+    const selectedWorker = getSelectedWorker();
+    const proposal = state.switchProposal;
 
-    const oldFromSelection = state.fromSelection;
-    state.fromSelection = state.toSelection;
-    state.toSelection = oldFromSelection;
-
-    syncDraftMarkers();
-  }
-
-  function clearAllSelections() {
-    dom.fromInput.value = '';
-    dom.toInput.value = '';
-    state.fromSelection = null;
-    state.toSelection = null;
-    setPickMode(null);
-    routeRenderer.clearAll();
-    routeRenderer.clearPickMarkers();
-    ui.resetMetrics();
-    ui.setStatus('Cleared. Enter addresses or pick points directly on the map.');
-  }
-
-  function togglePickMode(mode) {
-    setPickMode(state.pickMode === mode ? null : mode);
-  }
-
-  function setPickMode(mode) {
-    state.pickMode = mode;
-    ui.setPickMode(mode);
-  }
-
-  async function onMapClickForLocation(event) {
-    if (!state.pickMode) {
+    if (!selectedWorker || !proposal) {
+      ui.setStatus('No reassignment proposal to accept.', true);
       return;
     }
 
-    const target = state.pickMode;
-    const lat = Number(event.latlng.lat.toFixed(6));
-    const lng = Number(event.latlng.lng.toFixed(6));
+    const now = getFixedNow();
+    state.workers = state.workers.map((worker) => {
+      const update = proposal.workerUpdates.find((item) => item.workerId === worker.id);
+      const affected = proposal.affectedWorkerIds.includes(worker.id);
+      if (!update && !affected) {
+        return worker;
+      }
 
-    ui.setStatus(`Resolving ${target === 'from' ? 'Start (A)' : 'Destination (B)'} location...`);
+      const nextWorker = {
+        ...worker,
+        status: 'yellow',
+        focusLevel: 'medium',
+        energyLevel: worker.energyLevel === 'low' ? 'medium' : worker.energyLevel,
+        plan: Array.isArray(worker.plan) ? worker.plan.map((task) => ({ ...task })) : []
+      };
+
+      if (update?.task) {
+        replaceCurrentOrNextTask(nextWorker.plan, update.task, now);
+      }
+
+      return nextWorker;
+    });
+
+    workerOverlay.setWorkers(state.workers);
+    workerOverlay.render({ focus: false });
+
+    state.switchProposal = null;
+    ui.setSwitchProgress([]);
+    ui.clearSwitchProposal();
+    renderUi();
+    ui.setStatus('Plan accepted. Both involved workers are now yellow because they switched tasks.');
+  }
+
+  function rejectSwitchProposal() {
+    if (!state.switchProposal) {
+      return;
+    }
+
+    state.switchProposal = null;
+    ui.setSwitchProgress([]);
+    ui.clearSwitchProposal();
+    ui.setStatus('Reassignment proposal rejected.');
+  }
+
+  async function generatePromptTask() {
+    if (!state.groqEnabled) {
+      ui.setStatus('GROQ_API_KEY is required to generate prompt-based tasks.', true);
+      return;
+    }
+
+    const selectedWorker = getSelectedWorker();
+    const prompt = dom.taskPromptInput.value.trim();
+
+    if (!selectedWorker) {
+      ui.setStatus('Select a worker first.', true);
+      return;
+    }
+
+    if (!prompt) {
+      ui.setStatus('Enter a prompt to generate a new task.', true);
+      return;
+    }
+
+    ui.setTaskPromptLoading(true);
+    const progressLines = [];
 
     try {
-      const place = await reverseGeocode(lat, lng);
-      applyPickedLocation(target, place);
+      progressLines.push('1/4 Reading your prompt and fixed-time worker context.');
+      ui.setTaskProgress(progressLines);
+      await pause(160);
 
-      if (target === 'from' && !state.toSelection) {
-        setPickMode('to');
-      } else {
-        setPickMode(null);
+      progressLines.push('2/4 Applying location/sun/crowd constraints.');
+      ui.setTaskProgress(progressLines);
+      await pause(160);
+
+      progressLines.push('3/4 Calling Groq model to generate an updated task.');
+      ui.setTaskProgress(progressLines);
+
+      const now = getFixedNow();
+      const proposal = await requestPromptTaskProposal({
+        nowIso: now.toISOString(),
+        prompt,
+        worker: buildWorkerContext(selectedWorker, now)
+      });
+
+      progressLines.push('4/4 Formatting final proposal for approval.');
+      ui.setTaskProgress(progressLines);
+
+      state.generatedTaskProposal = proposal;
+      ui.setGeneratedTaskProposal(proposal);
+      ui.setStatus('Prompt-based task proposal is ready. Review and accept/reject.');
+    } catch (error) {
+      ui.setStatus(error.message || 'Prompt-based task generation failed.', true);
+    } finally {
+      ui.setTaskPromptLoading(false);
+    }
+  }
+
+  function acceptGeneratedTask() {
+    const selectedWorker = getSelectedWorker();
+    const proposal = state.generatedTaskProposal;
+
+    if (!selectedWorker || !proposal || proposal.workerId !== selectedWorker.id) {
+      ui.setStatus('No generated task proposal available for this worker.', true);
+      return;
+    }
+
+    const now = getFixedNow();
+    state.workers = state.workers.map((worker) => {
+      if (worker.id !== selectedWorker.id) {
+        return worker;
       }
-    } catch (_error) {
-      const fallback = {
-        label: `${lat.toFixed(6)}, ${lng.toFixed(6)}`,
-        lat,
-        lng
+
+      const nextWorker = {
+        ...worker,
+        plan: Array.isArray(worker.plan) ? worker.plan.map((task) => ({ ...task })) : []
       };
-      applyPickedLocation(target, fallback);
-      setPickMode(null);
+
+      replaceCurrentOrNextTask(nextWorker.plan, proposal.task, now);
+      return nextWorker;
+    });
+
+    workerOverlay.setWorkers(state.workers);
+    workerOverlay.render({ focus: false });
+
+    state.generatedTaskProposal = null;
+    dom.taskPromptInput.value = '';
+    ui.setTaskProgress([]);
+    ui.clearGeneratedTaskProposal();
+    renderUi();
+    ui.setStatus('Generated task accepted and applied to worker timeline.');
+  }
+
+  function rejectGeneratedTask() {
+    if (!state.generatedTaskProposal) {
+      return;
+    }
+
+    state.generatedTaskProposal = null;
+    ui.setTaskProgress([]);
+    ui.clearGeneratedTaskProposal();
+    ui.setStatus('Generated task proposal rejected.');
+  }
+
+  function openWorkerDetails() {
+    const selectedWorker = getSelectedWorker();
+    if (!selectedWorker) {
+      ui.setStatus('Select a worker to open detailed information.', true);
+      return;
+    }
+
+    try {
+      window.open(selectedWorker.profileUrl, '_blank', 'noopener,noreferrer');
+      ui.setStatus(`Opened detailed page for ${selectedWorker.name}.`);
+    } catch (_error) {
+      ui.setStatus('Unable to open worker details page from this browser context.', true);
     }
   }
 
-  function applyPickedLocation(kind, place) {
-    if (kind === 'from') {
-      state.fromSelection = place;
-      dom.fromInput.value = place.label;
-    } else {
-      state.toSelection = place;
-      dom.toInput.value = place.label;
-    }
+  function getSelectedWorker() {
+    return state.workers.find((worker) => worker.id === state.selectedWorkerId) || null;
+  }
+}
 
-    syncDraftMarkers();
+function getFixedNow() {
+  const date = new Date();
+  date.setHours(FIXED_WORK_HOUR, FIXED_WORK_MINUTE, 0, 0);
+  return date;
+}
 
-    if (state.fromSelection && state.toSelection) {
-      const bounds = L.latLngBounds(
-        [state.fromSelection.lat, state.fromSelection.lng],
-        [state.toSelection.lat, state.toSelection.lng]
-      );
-      map.fitBounds(bounds.pad(0.2), { animate: true, duration: 0.4 });
-    }
-
-    ui.setStatus(`${kind === 'from' ? 'Start (A)' : 'Destination (B)'} set from map.`);
+function pickInitialWorkerId(workers) {
+  const firstRed = workers.find((worker) => worker.status === 'red');
+  if (firstRed) {
+    return firstRed.id;
   }
 
-  function syncDraftMarkers() {
-    routeRenderer.clearPickMarkers();
+  return workers[0]?.id || null;
+}
 
-    if (state.fromSelection) {
-      routeRenderer.setDraftPoint('from', state.fromSelection, state.fromSelection.label);
-    }
+function buildWorkerContext(worker, nowDate) {
+  const currentTask = findCurrentTask(worker.plan, nowDate);
+  const upcomingTasks = findUpcomingTasks(worker.plan, nowDate).slice(0, 3);
 
-    if (state.toSelection) {
-      routeRenderer.setDraftPoint('to', state.toSelection, state.toSelection.label);
-    }
+  return {
+    id: worker.id,
+    name: worker.name,
+    role: worker.role,
+    status: worker.status,
+    focusLevel: worker.focusLevel,
+    energyLevel: worker.energyLevel,
+    sunExposure: worker.sunExposure,
+    crowdLevel: worker.crowdLevel,
+    zone: worker.zone,
+    location: {
+      lat: Number(worker.position?.[0]),
+      lng: Number(worker.position?.[1])
+    },
+    currentTask,
+    upcomingTasks
+  };
+}
+
+function replaceCurrentOrNextTask(plan, taskUpdate, nowDate) {
+  if (!Array.isArray(plan)) {
+    return;
   }
 
-  async function resolveLocation(kind, typedValue) {
-    const selection = kind === 'from' ? state.fromSelection : state.toSelection;
+  const targetIndex = plan.findIndex((task) => {
+    const phase = getTaskPhase(task, nowDate);
+    return phase === 'current' || phase === 'upcoming';
+  });
 
-    if (selection && selection.label === typedValue) {
-      return selection;
-    }
-
-    const geocoded = await geocodeFirst(typedValue);
-    if (!geocoded) {
-      return null;
-    }
-
-    if (kind === 'from') {
-      state.fromSelection = geocoded;
-    } else {
-      state.toSelection = geocoded;
-    }
-
-    syncDraftMarkers();
-    return geocoded;
+  if (targetIndex >= 0) {
+    plan[targetIndex] = {
+      ...plan[targetIndex],
+      ...taskUpdate
+    };
+    return;
   }
+
+  plan.push({
+    start: taskUpdate.start || '16:00',
+    end: taskUpdate.end || '17:00',
+    title: taskUpdate.title || 'New task',
+    details: taskUpdate.details || '',
+    load: taskUpdate.load || 'light',
+    zone: taskUpdate.zone || 'General zone',
+    sunExposure: taskUpdate.sunExposure || 'low',
+    crowdLevel: taskUpdate.crowdLevel || 'low'
+  });
+}
+
+function findCurrentTask(plan, nowDate) {
+  if (!Array.isArray(plan)) {
+    return null;
+  }
+
+  const nowMinutes = getCurrentMinutes(nowDate);
+  return plan.find((task) => getTaskPhaseWithMinutes(task, nowMinutes) === 'current') || null;
+}
+
+function findUpcomingTasks(plan, nowDate) {
+  if (!Array.isArray(plan)) {
+    return [];
+  }
+
+  const nowMinutes = getCurrentMinutes(nowDate);
+  return plan.filter((task) => getTaskPhaseWithMinutes(task, nowMinutes) === 'upcoming');
+}
+
+function getTaskPhase(task, nowDate) {
+  return getTaskPhaseWithMinutes(task, getCurrentMinutes(nowDate));
+}
+
+function getTaskPhaseWithMinutes(task, nowMinutes) {
+  const start = toMinutes(task.start);
+  const end = toMinutes(task.end);
+
+  if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(nowMinutes)) {
+    return 'upcoming';
+  }
+
+  if (nowMinutes < start) {
+    return 'upcoming';
+  }
+
+  if (nowMinutes >= end) {
+    return 'completed';
+  }
+
+  return 'current';
+}
+
+function getCurrentMinutes(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return Number.NaN;
+  }
+
+  return (date.getHours() * 60) + date.getMinutes();
+}
+
+function toMinutes(hhmm) {
+  const [hours, minutes] = String(hhmm).split(':').map((value) => Number(value));
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return Number.NaN;
+  }
+
+  return (hours * 60) + minutes;
+}
+
+function pause(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

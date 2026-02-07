@@ -1,15 +1,27 @@
-# Cool Routes UAE (Hackathon MVP)
+# NYUAD Worker Planner (Hackathon MVP)
 
-A full-stack web app that builds a shade-optimized walk between A and B at current time, visualizes real-time shadows with ShadeMap, and auto-dispatches a micro-mobility pod when exposed distance becomes too long.
+A full-stack web app for managing on-site workers at NYU Abu Dhabi with live map status, shift timelines, and AI-assisted task replanning.
 
 ## Highlights
 
-- Real-time shadow visualization via `leaflet-shadow-simulator` (ShadeMap API).
-- Route optimization stays custom (`OSRM + OSM buildings + SunCalc`).
-- Pod dispatch simulation when exposed remainder is `>= 500m`.
-- Map click location picking for both `A` and `B` with reverse geocoding.
-- Built-in shade controls: `-1h`, `+1h`, `Play`, `Stop`, and full-day sun exposure mode.
-- Mobile-first responsive UI with floating service panels.
+- Live worker markers on the campus map with status colors:
+  - `green`: on track
+  - `yellow`: needs attention
+  - `red`: losing focus
+- Right-side worker panel with:
+  - current time
+  - timeline (completed/current/upcoming)
+  - upcoming tasks
+- AI Focus Rebalancer for red workers:
+  - considers task load, location, sun exposure, and crowd level
+  - proposes two-worker reassignment (red + green)
+  - accept/reject workflow
+- Prompt-based task editing:
+  - type a prompt
+  - generate one updated task with progress steps
+  - accept/reject workflow
+- Separate "All Workers Daily Plan" window with all schedules.
+- Real-time shadow visualization via `leaflet-shadow-simulator`.
 
 ## Architecture
 
@@ -18,13 +30,11 @@ A full-stack web app that builds a shade-optimized walk between A and B at curre
 - API client: `public/js/api/client.mjs`
 - Map modules:
   - `public/js/map/shadeController.mjs`
-  - `public/js/map/routeRenderer.mjs`
+  - `public/js/map/workerOverlay.mjs`
 - UI modules:
+  - `public/js/ui/appShell.mjs`
   - `public/js/ui/dom.mjs`
   - `public/js/ui/controller.mjs`
-- Utilities:
-  - `public/js/utils/format.mjs`
-  - `public/js/constants.mjs`
 
 ## Environment
 
@@ -32,12 +42,15 @@ Use `.env`:
 
 ```bash
 SHADEMAP_API_KEY=YOUR_SHADEMAP_API_KEY_HERE
+GROQ_API_KEY=YOUR_GROQ_API_KEY_HERE
+GROQ_MODEL=llama-3.3-70b-versatile
 PORT=3000
 ```
 
-Get key from: https://shademap.app/about/
+Notes:
 
-After changing `.env`, restart the server.
+- `GROQ_API_KEY` is required for AI reassignment and prompt-based task generation.
+- If `GROQ_API_KEY` is missing, map and worker planning still work, but AI features are disabled.
 
 ## Run
 
@@ -47,15 +60,3 @@ npm run dev
 ```
 
 Open `http://localhost:3000`.
-
-If port 3000 is busy:
-
-```bash
-PORT=4311 npm run dev
-```
-
-## Notes
-
-- The app uses public OSM services (`Nominatim`, `Overpass`, `OSRM`), so heavy usage may hit rate limits.
-- Shadows can look sparse at low zoom; zoom in (`>= 14`) for dense building-shadow updates.
-# attention

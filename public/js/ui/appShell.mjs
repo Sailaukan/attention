@@ -12,126 +12,109 @@ function AppShell() {
 
     e(
       'aside',
-      { className: 'card shade-card' },
-      e(
-        'div',
-        { className: 'card-head' },
-        e('h2', null, 'Live Shadow Engine'),
-        e('span', { id: 'loader', className: 'pill' }, 'Idle')
-      ),
-      e(
-        'div',
-        { className: 'time-line' },
-        e('button', { id: 'decrement', type: 'button', 'aria-label': 'Minus one hour' }, '-1h'),
-        e('button', { id: 'increment', type: 'button', 'aria-label': 'Plus one hour' }, '+1h'),
-        e('button', { id: 'play', type: 'button' }, 'Play'),
-        e('button', { id: 'stop', type: 'button' }, 'Stop')
-      ),
-      e(
-        'label',
-        { className: 'toggle' },
-        e('input', { id: 'exposure', type: 'checkbox', autoComplete: 'off' }),
-        e('span', null, 'Full-day sun exposure')
-      ),
-      e(
-        'div',
-        { className: 'meta-row' },
-        'Time ',
-        e('strong', { id: 'currentTime' }, '-')
-      ),
-      e(
-        'div',
-        { id: 'exposureGradientContainer', className: 'gradient-wrap hidden' },
-        e(
-          'div',
-          { className: 'meta-row' },
-          'Sunlight at cursor ',
-          e('strong', { id: 'hours' }, '-'),
-          ' h'
-        ),
-        e('div', { id: 'exposureGradient', className: 'gradient' })
-      )
+      { className: 'card plans-launcher-card' },
+      e('h2', null, 'Plans Hub'),
+      e('p', null, 'Open the combined schedule window for all workers.'),
+      e('button', { id: 'openAllPlansBtn', type: 'button', className: 'primary' }, 'Show All Plans')
     ),
 
     e(
       'aside',
-      { className: 'card route-card' },
+      { className: 'card worker-card' },
       e(
         'header',
         { className: 'card-head stack' },
-        e('h1', null, 'Cool Routes UAE'),
-        e('p', null, 'Finds shaded walking paths and dispatches a pod when direct-sun stretch is too long.')
+        e('h1', null, 'NYUAD Worker Board'),
+        e('p', null, 'Planner time is fixed at 2:00 PM for consistent testing.'),
+        e('span', { className: 'pill fixed-pill' }, 'Fixed Time: 2:00 PM')
       ),
-      e(
-        'form',
-        { id: 'routeForm', className: 'route-form' },
-        e(
-          'div',
-          { className: 'input-block' },
-          e('label', { htmlFor: 'fromInput' }, 'Start (A)'),
-          e(
-            'div',
-            { className: 'inline-input' },
-            e('input', {
-              id: 'fromInput',
-              name: 'from',
-              type: 'text',
-              placeholder: 'Dubai Mall',
-              required: true
-            }),
-            e('button', { id: 'pickFromBtn', type: 'button', className: 'ghost' }, 'Pick')
-          )
-        ),
-        e(
-          'div',
-          { className: 'input-block' },
-          e('label', { htmlFor: 'toInput' }, 'Destination (B)'),
-          e(
-            'div',
-            { className: 'inline-input' },
-            e('input', {
-              id: 'toInput',
-              name: 'to',
-              type: 'text',
-              placeholder: 'Burj Khalifa',
-              required: true
-            }),
-            e('button', { id: 'pickToBtn', type: 'button', className: 'ghost' }, 'Pick')
-          )
-        ),
-        e(
-          'div',
-          { className: 'row-between' },
-          e(
-            'label',
-            { className: 'toggle compact' },
-            e('input', { id: 'autoPod', type: 'checkbox', defaultChecked: true }),
-            e('span', null, 'Auto pod dispatch')
-          ),
-          e(
-            'div',
-            { className: 'inline-tools' },
-            e('button', { id: 'swapBtn', type: 'button', className: 'ghost' }, 'Swap'),
-            e('button', { id: 'clearBtn', type: 'button', className: 'ghost' }, 'Clear')
-          )
-        ),
-        e('button', { id: 'planBtn', type: 'submit', className: 'primary' }, 'Build Cool Route')
-      ),
-      e('div', { id: 'pickHint', className: 'hint hidden' }, 'Tap the map to set location.'),
-      e('div', { id: 'status', className: 'status' }, 'Loading runtime config...'),
+      e('div', { id: 'status', className: 'status' }, 'Loading worker planner...'),
 
       e(
         'section',
-        { className: 'stats-grid' },
-        e('article', { className: 'metric' }, e('span', null, 'Distance'), e('strong', { id: 'distanceValue' }, '-')),
-        e('article', { className: 'metric' }, e('span', null, 'ETA'), e('strong', { id: 'durationValue' }, '-')),
-        e('article', { className: 'metric' }, e('span', null, 'Shade'), e('strong', { id: 'shadeValue' }, '-')),
-        e('article', { className: 'metric' }, e('span', null, 'Sunny'), e('strong', { id: 'sunnyValue' }, '-'))
+        { className: 'worker-profile box' },
+        e('div', { id: 'workerName', className: 'worker-name' }, 'Select a worker from the map'),
+        e('div', { id: 'workerRole', className: 'worker-role' }, '-'),
+        e(
+          'div',
+          { className: 'worker-meta' },
+          e('span', { id: 'workerStatusBadge', className: 'status-pill status-pill--yellow' }, 'Needs Attention'),
+          e('span', null, 'Now: '),
+          e('strong', { id: 'workerNowTime' }, '-')
+        ),
+        e('button', { id: 'openWorkerDetailsBtn', type: 'button', className: 'ghost worker-info-btn' }, 'Open Worker Info Page')
       ),
 
-      e('section', null, e('h3', null, 'Coordination Agent'), e('div', { id: 'podStatus', className: 'box' }, 'No active pod dispatch.')),
+      e('section', null, e('h3', null, "Today's Timeline"), e('div', { id: 'workerTimeline', className: 'box timeline-box' }, 'No worker selected yet.')),
 
-      e('section', null, e('h3', null, 'Route Candidates'), e('div', { id: 'alternatives', className: 'box' }, 'No computed routes yet.'))
+      e('section', null, e('h3', null, 'Upcoming Tasks'), e('div', { id: 'upcomingTasks', className: 'box' }, 'No worker selected yet.')),
+
+      e(
+        'section',
+        { className: 'ai-rebalancer box' },
+        e('h3', null, 'AI Focus Rebalancer'),
+        e('p', { className: 'ai-intro' }, 'For red workers, AI proposes a safer two-worker swap with lighter load, lower sun exposure, and lower crowd risk.'),
+        e('div', { id: 'attentionHint', className: 'ai-hint' }, 'Select a red worker to request an AI reassignment proposal.'),
+        e('button', { id: 'generateSwitchBtn', type: 'button', className: 'primary ai-main-btn', disabled: true }, 'Generate Reassignment Proposal'),
+        e('div', { id: 'switchProgress', className: 'ai-progress hidden' }, ''),
+        e(
+          'div',
+          { id: 'switchProposal', className: 'ai-proposal hidden' },
+          e('div', { id: 'switchSummary', className: 'ai-proposal-row' }, ''),
+          e('div', { id: 'switchAffected', className: 'ai-proposal-row' }, ''),
+          e('div', { id: 'switchRationale', className: 'ai-proposal-row' }, ''),
+          e(
+            'div',
+            { className: 'decision-row' },
+            e('button', { id: 'acceptSwitchBtn', type: 'button', className: 'primary decision-btn' }, 'Accept Reassignment'),
+            e('button', { id: 'rejectSwitchBtn', type: 'button', className: 'ghost decision-btn' }, 'Reject')
+          )
+        )
+      ),
+
+      e(
+        'section',
+        null,
+        e('h3', null, 'Prompt-Based Task Edit'),
+        e('textarea', {
+          id: 'taskPromptInput',
+          className: 'task-prompt',
+          rows: 3,
+          placeholder: 'Example: reduce sun exposure and replace lifting with inspection near shaded corridor.'
+        }),
+        e('button', { id: 'generateTaskBtn', type: 'button', className: 'primary' }, 'Generate Task From Prompt'),
+        e('div', { id: 'taskProgress', className: 'box hidden' }, ''),
+        e(
+          'div',
+          { id: 'generatedTaskProposal', className: 'box hidden' },
+          e('div', { id: 'generatedTaskSummary' }, ''),
+          e('div', { id: 'generatedTaskDetails' }, ''),
+          e('div', { id: 'generatedTaskRationale' }, ''),
+          e(
+            'div',
+            { className: 'decision-row' },
+            e('button', { id: 'acceptGeneratedTaskBtn', type: 'button', className: 'primary decision-btn' }, 'Accept Task Change'),
+            e('button', { id: 'rejectGeneratedTaskBtn', type: 'button', className: 'ghost decision-btn' }, 'Reject')
+          )
+        )
+      )
+    ),
+
+    e(
+      'div',
+      { id: 'allPlansWindow', className: 'all-plans-window hidden' },
+      e(
+        'section',
+        { className: 'all-plans-card' },
+        e(
+          'div',
+          { className: 'card-head' },
+          e('h2', null, 'All Workers Daily Plan'),
+          e('button', { id: 'closeAllPlansBtn', type: 'button', className: 'ghost' }, 'Close')
+        ),
+        e('p', null, 'Combined schedule view for all field workers at NYU Abu Dhabi at fixed 2:00 PM.'),
+        e('div', { id: 'allPlansContent', className: 'all-plans-content' }, 'No plans loaded.')
+      )
     )
   );
 }
