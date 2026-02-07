@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Components Reference</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            background: #f5f5f5;
+            color: #333;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #1a1a1a;
+            border-bottom: 3px solid #60a5fa;
+            padding-bottom: 12px;
+        }
+        h2 {
+            color: #3b82f6;
+            margin-top: 40px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        h3 {
+            color: #555;
+            margin-top: 24px;
+        }
+        .component-card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin: 20px 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .prop-list {
+            background: #f9f9f9;
+            border-left: 4px solid #60a5fa;
+            padding: 16px;
+            margin: 12px 0;
+            border-radius: 4px;
+        }
+        .prop-item {
+            margin: 8px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+        .prop-name {
+            color: #e11d48;
+            font-weight: bold;
+        }
+        .prop-type {
+            color: #0891b2;
+        }
+        code {
+            background: #f1f1f1;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            color: #e11d48;
+        }
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+        .feature-list li {
+            padding: 8px 0;
+            padding-left: 28px;
+            position: relative;
+        }
+        .feature-list li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #10b981;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        .data-structure {
+            background: #1a1a1a;
+            color: #e5e7eb;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.8;
+        }
+        .keyword {
+            color: #c678dd;
+        }
+        .string {
+            color: #98c379;
+        }
+        .number {
+            color: #d19a66;
+        }
+        .comment {
+            color: #5c6370;
+        }
+        .cta-box {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 32px;
+            border-radius: 16px;
+            margin: 40px 0;
+            text-align: center;
+        }
+        .cta-box h2 {
+            color: white;
+            margin-top: 0;
+        }
+        .cta-button {
+            display: inline-block;
+            background: white;
+            color: #667eea;
+            padding: 14px 32px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            margin: 8px;
+            transition: transform 0.2s;
+        }
+        .cta-button:hover {
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body>
+    <h1>🎨 Dashboard Components Reference</h1>
+    <p><strong>AI Cognitive Tracking Dashboard</strong> — Component breakdown and technical documentation</p>
+
+    <div class="cta-box">
+        <h2>🚀 Quick Start</h2>
+        <p>Launch the dashboard immediately:</p>
+        <a href="/add_new_employee.html" class="cta-button">Open Dashboard →</a>
+        <a href="/index.html" class="cta-button">Main App</a>
+    </div>
+
+    <!-- ========================================== -->
+    <h2>📦 Component 1: VideoTrackingCard</h2>
+    <div class="component-card">
+        <h3>Purpose</h3>
+        <p>Displays live video tracking interface with employee profile information and real-time focus indicators.</p>
+
+        <h3>Visual Structure</h3>
+        <ul class="feature-list">
+            <li>16:9 video container with placeholder overlay</li>
+            <li>Disabled play button (centered)</li>
+            <li>Timeline scrubber at bottom (34% progress)</li>
+            <li>Timestamp display (4:55:24)</li>
+            <li>Current task text</li>
+            <li>Focus quality bar (animated blue gradient)</li>
+            <li>Employee profile fields (name, position, zone, emergency contact)</li>
+        </ul>
+
+        <h3>Props</h3>
+        <div class="prop-list">
+            <div class="prop-item">
+                <span class="prop-name">data</span>: 
+                <span class="prop-type">Object</span> — Contains employee, liveTracking data
+            </div>
+            <div class="prop-item">
+                <span class="prop-name">onEmployeeUpdate</span>: 
+                <span class="prop-type">Function(field, value)</span> — Callback for profile edits
+            </div>
+        </div>
+
+        <h3>Key Features</h3>
+        <ul class="feature-list">
+            <li>Read-only employee name (large display)</li>
+            <li>Editable inputs for position, zone, and emergency contact</li>
+            <li>Dynamic focus bar width based on focus percentage</li>
+            <li>Dark input fields that blend into dashboard theme</li>
+        </ul>
+    </div>
+
+    <!-- ========================================== -->
+    <h2>📊 Component 2: BrainSignalsChart</h2>
+    <div class="component-card">
+        <h3>Purpose</h3>
+        <p>Visualizes cognitive focus patterns over time using an SVG-based line chart.</p>
+
+        <h3>Visual Structure</h3>
+        <ul class="feature-list">
+            <li>Large current focus percentage (36px, light blue)</li>
+            <li>SVG line chart with smooth curves</li>
+            <li>Gradient area fill under the line</li>
+            <li>Grid lines at 0, 25, 50, 75, 100</li>
+            <li>Y-axis labels</li>
+            <li>Two stat cards: High-focus and Low-focus periods</li>
+        </ul>
+
+        <h3>Props</h3>
+        <div class="prop-list">
+            <div class="prop-item">
+                <span class="prop-name">data</span>: 
+                <span class="prop-type">Object</span> — Contains focusTimeSeries array and liveTracking
+            </div>
+        </div>
+
+        <h3>Technical Details</h3>
+        <ul class="feature-list">
+            <li>Generates SVG path using quadratic curves for smoothness</li>
+            <li>Responsive viewBox (600x240)</li>
+            <li>40px padding on all sides</li>
+            <li>Calculates high/low focus percentages (threshold: 75%)</li>
+            <li>Linear gradient definition for area fill</li>
+        </ul>
+    </div>
+
+    <!-- ========================================== -->
+    <h2>✅ Component 3: TasksFocusCard</h2>
+    <div class="component-card">
+        <h3>Purpose</h3>
+        <p>Displays completed and pending tasks with focus quality metrics.</p>
+
+        <h3>Visual Structure</h3>
+        <ul class="feature-list">
+            <li>Two sections: "Finished Tasks" and "Pending Tasks"</li>
+            <li>Task items with name and time range</li>
+            <li>Focus badges for completed tasks (blue, rounded)</li>
+            <li>Pending status indicator (yellow badge)</li>
+            <li>Em dash (—) for pending tasks without focus data</li>
+            <li>Subtle dividers between items</li>
+        </ul>
+
+        <h3>Props</h3>
+        <div class="prop-list">
+            <div class="prop-item">
+                <span class="prop-name">finishedTasks</span>: 
+                <span class="prop-type">Array</span> — {name, time, focus}
+            </div>
+            <div class="prop-item">
+                <span class="prop-name">pendingTasks</span>: 
+                <span class="prop-type">Array</span> — {name, status}
+            </div>
+        </div>
+
+        <h3>Styling Notes</h3>
+        <ul class="feature-list">
+            <li>Focus badges: <code>rgba(96, 165, 250, 0.15)</code> background</li>
+            <li>Pending badges: <code>rgba(251, 191, 36, 0.15)</code> background</li>
+            <li>Border bottom on all items except last</li>
+            <li>14px task name, 12px time text</li>
+        </ul>
+    </div>
+
+    <!-- ========================================== -->
+    <h2>🤖 Component 4: AIRecommendations</h2>
+    <div class="component-card">
+        <h3>Purpose</h3>
+        <p>Generates and displays AI-powered task recommendations with confidence scoring.</p>
+
+        <h3>Visual Structure</h3>
+        <ul class="feature-list">
+            <li>Light blue gradient background (matches Talenzo promo card)</li>
+            <li>"Premium" badge next to AI logo</li>
+            <li>Large title and description text</li>
+            <li>"Generate recommendations" button (initially)</li>
+            <li>Grid of recommendation cards (after generation)</li>
+            <li>Each card: task name, reason, confidence %, assign button</li>
+        </ul>
+
+        <h3>Props</h3>
+        <div class="prop-list">
+            <div class="prop-item">
+                <span class="prop-name">recommendations</span>: 
+                <span class="prop-type">Array</span> — {id, taskName, reason, confidence}
+            </div>
+            <div class="prop-item">
+                <span class="prop-name">onAssignTask</span>: 
+                <span class="prop-type">Function(task)</span> — Opens assignment modal
+            </div>
+        </div>
+
+        <h3>Interaction Flow</h3>
+        <ul class="feature-list">
+            <li>Click "Generate recommendations" → Show recommendation cards</li>
+            <li>Click "Assign task" → Trigger onAssignTask callback</li>
+            <li>State management using useState hook</li>
+        </ul>
+    </div>
+
+    <!-- ========================================== -->
+    <h2>📝 Component 5: AssignTaskModal</h2>
+    <div class="component-card">
+        <h3>Purpose</h3>
+        <p>Modal dialog for assigning recommended tasks to employees with scheduling.</p>
+
+        <h3>Visual Structure</h3>
+        <ul class="feature-list">
+            <li>Dark modal overlay with backdrop blur</li>
+            <li>Centered modal card (max-width: 500px)</li>
+            <li>Task name (read-only)</li>
+            <li>Employee name (read-only)</li>
+            <li>Start date picker (required)</li>
+            <li>Start time picker (required)</li>
+            <li>Optional notes textarea</li>
+            <li>Cancel and Confirm buttons</li>
+        </ul>
+
+        <h3>Props</h3>
+        <div class="prop-list">
+            <div class="prop-item">
+                <span class="prop-name">task</span>: 
+                <span class="prop-type">Object</span> — Task data from recommendation
+            </div>
+            <div class="prop-item">
+                <span class="prop-name">employeeName</span>: 
+                <span class="prop-type">String</span> — Name to display
+            </div>
+            <div class="prop-item">
+                <span class="prop-name">onClose</span>: 
+                <span class="prop-type">Function</span> — Close modal handler
+            </div>
+            <div class="prop-item">
+                <span class="prop-name">onConfirm</span>: 
+                <span class="prop-type">Function(taskData)</span> — Submit handler
+            </div>
+        </div>
+
+        <h3>Form Validation</h3>
+        <ul class="feature-list">
+            <li>Date and time fields are required (HTML5 validation)</li>
+            <li>Form submit triggers onConfirm with merged data</li>
+            <li>Clicking overlay closes modal</li>
+            <li>StopPropagation on modal content prevents accidental closure</li>
+        </ul>
+    </div>
+
+    <!-- ========================================== -->
+    <h2>🔔 Component 6: Toast</h2>
+    <div class="component-card">
+        <h3>Purpose</h3>
+        <p>Temporary success notification for user actions.</p>
+
+        <h3>Visual Structure</h3>
+        <ul class="feature-list">
+            <li>Fixed position (bottom-right corner)</li>
+            <li>Green background (#10b981)</li>
+            <li>White text, medium font weight</li>
+            <li>Slide-in animation from right</li>
+            <li>Auto-dismiss after 3 seconds</li>
+        </ul>
+
+        <h3>Props</h3>
+        <div class="prop-list">
+            <div class="prop-item">
+                <span class="prop-name">message</span>: 
+                <span class="prop-type">String</span> — Text to display
+            </div>
+            <div class="prop-item">
+                <span class="prop-name">show</span>: 
+                <span class="prop-type">Boolean</span> — Visibility state
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <h2>🧩 Data Structure</h2>
+    <div class="component-card">
+        <h3>MOCK_DATA Object</h3>
+        <div class="data-structure">
+<span class="keyword">const</span> MOCK_DATA = {
+  employee: {
+    name: <span class="string">"Antony Cardenas"</span>,
+    position: <span class="string">"Senior Construction Supervisor"</span>,
+    zone: <span class="string">"Zone A - Building 3"</span>,
+    emergencyContact: <span class="string">"+1 (555) 123-4567"</span>
+  },
+  liveTracking: {
+    timestamp: <span class="string">"4:55:24"</span>,
+    currentTask: <span class="string">"Steel beam installation"</span>,
+    focusLevel: <span class="number">78</span>
+  },
+  focusTimeSeries: [
+    <span class="comment">// Array of 30 focus values (0-100)</span>
+    <span class="number">45, 52, 58, 65, 72, 78, 82, 85, 83, 79...</span>
+  ],
+  finishedTasks: [
+    { 
+      name: <span class="string">"Foundation inspection"</span>, 
+      time: <span class="string">"08:00 - 10:30"</span>, 
+      focus: <span class="number">82</span> 
+    },
+    <span class="comment">// ...</span>
+  ],
+  pendingTasks: [
+    { 
+      name: <span class="string">"Concrete pouring supervision"</span>, 
+      status: <span class="string">"Pending"</span> 
+    },
+    <span class="comment">// ...</span>
+  ],
+  recommendations: [
+    {
+      id: <span class="number">1</span>,
+      taskName: <span class="string">"Electrical wiring inspection"</span>,
+      reason: <span class="string">"High focus during similar tasks..."</span>,
+      confidence: <span class="number">91</span>
+    },
+    <span class="comment">// ...</span>
+  ]
+};
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <h2>🎨 Design System</h2>
+    <div class="component-card">
+        <h3>Color Palette</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin: 20px 0;">
+            <div style="background: #1a1a1a; padding: 20px; border-radius: 8px; color: white;">
+                <strong>Background</strong><br>
+                <code style="background: rgba(255,255,255,0.1); color: white;">#1a1a1a</code>
+            </div>
+            <div style="background: #242424; padding: 20px; border-radius: 8px; color: white;">
+                <strong>Card</strong><br>
+                <code style="background: rgba(255,255,255,0.1); color: white;">#242424</code>
+            </div>
+            <div style="background: #60a5fa; padding: 20px; border-radius: 8px; color: white;">
+                <strong>Accent</strong><br>
+                <code style="background: rgba(0,0,0,0.2); color: white;">#60a5fa</code>
+            </div>
+            <div style="background: #888888; padding: 20px; border-radius: 8px; color: white;">
+                <strong>Muted Text</strong><br>
+                <code style="background: rgba(0,0,0,0.2); color: white;">#888888</code>
+            </div>
+        </div>
+
+        <h3>Typography Scale</h3>
+        <ul class="feature-list">
+            <li><strong>Hero text:</strong> 36px (current focus level)</li>
+            <li><strong>Large heading:</strong> 28px (AI recommendations title)</li>
+            <li><strong>Profile name:</strong> 20px</li>
+            <li><strong>Body text:</strong> 14px</li>
+            <li><strong>Small labels:</strong> 12-13px</li>
+            <li><strong>Tiny text:</strong> 11px (video label)</li>
+        </ul>
+
+        <h3>Spacing System</h3>
+        <ul class="feature-list">
+            <li><strong>Card padding:</strong> 28px</li>
+            <li><strong>Grid gap:</strong> 24px</li>
+            <li><strong>Card border radius:</strong> 20px</li>
+            <li><strong>Button border radius:</strong> 8-10px</li>
+            <li><strong>Input border radius:</strong> 8px</li>
+        </ul>
+    </div>
+
+    <!-- ========================================== -->
+    <h2>⚡ State Management</h2>
+    <div class="component-card">
+        <h3>App Component State</h3>
+        <ul class="feature-list">
+            <li><code>data</code> — Main employee and tracking data (initialized from MOCK_DATA)</li>
+            <li><code>pendingTasks</code> — Dynamic task list (can grow when tasks assigned)</li>
+            <li><code>modalTask</code> — Currently selected task for assignment modal (null when closed)</li>
+            <li><code>toast</code> — Toast notification state {show, message}</li>
+        </ul>
+
+        <h3>Event Handlers</h3>
+        <ul class="feature-list">
+            <li><code>handleEmployeeUpdate(field, value)</code> — Updates employee profile fields</li>
+            <li><code>handleAssignTask(task)</code> — Opens modal with selected task</li>
+            <li><code>handleConfirmAssignment(taskData)</code> — Adds task to pending, shows toast</li>
+        </ul>
+    </div>
+
+    <!-- ========================================== -->
+    <div class="cta-box">
+        <h2>📚 Documentation Complete</h2>
+        <p>Ready to explore the dashboard? Launch it now!</p>
+        <a href="/add_new_employee.html" class="cta-button">Launch Dashboard →</a>
+    </div>
+
+    <footer style="text-align: center; margin-top: 60px; padding-top: 20px; border-top: 1px solid #ddd; color: #888;">
+        <p>Built with React 18, vanilla CSS, and attention to design detail.</p>
+    </footer>
+</body>
+</html>
