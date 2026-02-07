@@ -482,14 +482,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
 }
 
 async function fetchJson(url, options = {}, timeoutMs = 15000) {
-  const response = await fetchWithTimeout(url, {
-    ...options,
-    headers: {
-      'User-Agent': USER_AGENT,
-      ...(options.headers || {})
-    }
-  }, timeoutMs);
-
+  const response = await fetchWithTimeout(url, options, timeoutMs);
   if (!response.ok) {
     const body = await response.text();
     throw new Error(`HTTP ${response.status} ${response.statusText}: ${body.slice(0, 240)}`);
@@ -499,7 +492,7 @@ async function fetchJson(url, options = {}, timeoutMs = 15000) {
 }
 
 async function fetchBuildingsFromOverpass(bbox) {
-  const cacheKey = [bbox.south, bbox.west, bbox.north, bbox.east].map((v) => v.toFixed(4)).join(',');
+  const cacheKey = [bbox.south, bbox.west, bbox.north, bbox.east].map((value) => value.toFixed(4)).join(',');
   const cached = buildingCache.get(cacheKey);
 
   if (cached && (Date.now() - cached.timestamp) < BUILDING_CACHE_TTL_MS) {
@@ -511,7 +504,8 @@ async function fetchBuildingsFromOverpass(bbox) {
   const response = await fetchJson('https://overpass-api.de/api/interpreter', {
     method: 'POST',
     headers: {
-      'Content-Type': 'text/plain'
+      'Content-Type': 'text/plain',
+      'User-Agent': USER_AGENT
     },
     body: query
   }, 30000);
@@ -599,6 +593,10 @@ function parseMetric(raw) {
   return null;
 }
 
+function samePoint(a, b) {
+  return Math.abs(a.lat - b.lat) < 1e-9 && Math.abs(a.lng - b.lng) < 1e-9;
+}
+
 function simplifyRing(ring) {
   if (!Array.isArray(ring) || ring.length < 4) {
     return ring || [];
@@ -627,10 +625,6 @@ function simplifyRing(ring) {
   }
 
   return reduced.length >= 4 ? reduced : ring;
-}
-
-function samePoint(a, b) {
-  return Math.abs(a.lat - b.lat) < 1e-9 && Math.abs(a.lng - b.lng) < 1e-9;
 }
 
 function degreesToRadians(value) {

@@ -31,3 +31,15 @@ export async function requestPromptTaskProposal(payload) {
   const data = await postJson('/api/llm/generate-task', payload, 'Prompt-based task generation failed.');
   return data.proposal;
 }
+
+export async function fetchBuildingFeatures({ south, west, north, east, signal }) {
+  const url = new URL('/api/buildings', window.location.origin);
+  url.searchParams.set('south', Number(south).toFixed(6));
+  url.searchParams.set('west', Number(west).toFixed(6));
+  url.searchParams.set('north', Number(north).toFixed(6));
+  url.searchParams.set('east', Number(east).toFixed(6));
+
+  const response = await fetch(url.toString(), { signal });
+  const data = await readJson(response, 'Building fetch failed.');
+  return Array.isArray(data.features) ? data.features : [];
+}

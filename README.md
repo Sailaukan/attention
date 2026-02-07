@@ -1,6 +1,6 @@
 # NYUAD Worker Planner (Hackathon MVP)
 
-A full-stack web app for managing on-site workers at NYU Abu Dhabi with live map status, shift timelines, and AI-assisted task replanning.
+A full-stack web app for managing on-site workers at NYU Abu Dhabi with map status, fixed-time timelines, and AI-assisted task replanning.
 
 ## Highlights
 
@@ -8,28 +8,29 @@ A full-stack web app for managing on-site workers at NYU Abu Dhabi with live map
   - `green`: on track
   - `yellow`: needs attention
   - `red`: losing focus
+- Planner time is fixed to `2:00 PM` for deterministic testing.
 - Right-side worker panel with:
-  - current time
+  - worker profile/status
   - timeline (completed/current/upcoming)
   - upcoming tasks
 - AI Focus Rebalancer for red workers:
   - considers task load, location, sun exposure, and crowd level
-  - proposes two-worker reassignment (red + green)
+  - proposes a two-worker reassignment (red + green)
   - accept/reject workflow
+  - on accept, both involved workers become `yellow`
 - Prompt-based task editing:
-  - type a prompt
-  - generate one updated task with progress steps
+  - write a custom prompt
+  - generate one updated task with progress feedback
   - accept/reject workflow
-- Separate "All Workers Daily Plan" window with all schedules.
-- Real-time shadow visualization via `leaflet-shadow-simulator`.
+- Separate modal window for all workers' plans.
+- Button to open detailed worker information page (external URL).
 
 ## Architecture
 
 - Backend: `server.js`
 - Frontend entry: `public/js/main.mjs`
 - API client: `public/js/api/client.mjs`
-- Map modules:
-  - `public/js/map/shadeController.mjs`
+- Map module:
   - `public/js/map/workerOverlay.mjs`
 - UI modules:
   - `public/js/ui/appShell.mjs`
@@ -41,7 +42,6 @@ A full-stack web app for managing on-site workers at NYU Abu Dhabi with live map
 Use `.env`:
 
 ```bash
-SHADEMAP_API_KEY=YOUR_SHADEMAP_API_KEY_HERE
 GROQ_API_KEY=YOUR_GROQ_API_KEY_HERE
 GROQ_MODEL=llama-3.3-70b-versatile
 PORT=3000
@@ -50,7 +50,7 @@ PORT=3000
 Notes:
 
 - `GROQ_API_KEY` is required for AI reassignment and prompt-based task generation.
-- If `GROQ_API_KEY` is missing, map and worker planning still work, but AI features are disabled.
+- Without `GROQ_API_KEY`, worker planning UI still works but AI actions are disabled.
 
 ## Run
 

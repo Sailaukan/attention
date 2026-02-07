@@ -13,20 +13,17 @@ function AppShell() {
     e(
       'aside',
       { className: 'card plans-launcher-card' },
-      e('h2', null, 'Plans Hub'),
-      e('p', null, 'Open the combined schedule window for all workers.'),
-      e('button', { id: 'openAllPlansBtn', type: 'button', className: 'primary' }, 'Show All Plans')
+      e('button', { id: 'openAllPlansBtn', type: 'button', className: 'primary' }, 'Show plans')
     ),
 
     e(
       'aside',
-      { className: 'card worker-card' },
+      { id: 'workerCard', className: 'card worker-card' },
       e(
         'header',
         { className: 'card-head stack' },
         e('h1', null, 'NYUAD Worker Board'),
-        e('p', null, 'Planner time is fixed at 2:00 PM for consistent testing.'),
-        e('span', { className: 'pill fixed-pill' }, 'Fixed Time: 2:00 PM')
+        e('span', { className: 'pill fixed-pill' }, 'Time: 2:00 PM')
       ),
       e('div', { id: 'status', className: 'status' }, 'Loading worker planner...'),
 
@@ -53,7 +50,6 @@ function AppShell() {
         'section',
         { className: 'ai-rebalancer box' },
         e('h3', null, 'AI Focus Rebalancer'),
-        e('p', { className: 'ai-intro' }, 'For red workers, AI proposes a safer two-worker swap with lighter load, lower sun exposure, and lower crowd risk.'),
         e('div', { id: 'attentionHint', className: 'ai-hint' }, 'Select a red worker to request an AI reassignment proposal.'),
         e('button', { id: 'generateSwitchBtn', type: 'button', className: 'primary ai-main-btn', disabled: true }, 'Generate Reassignment Proposal'),
         e('div', { id: 'switchProgress', className: 'ai-progress hidden' }, ''),

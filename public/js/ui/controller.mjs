@@ -143,6 +143,14 @@ export function createUiController(dom) {
   let selectedWorker = null;
   let workersSnapshot = [];
 
+  function syncWorkerCardTone(status) {
+    if (!dom.workerCard) {
+      return;
+    }
+
+    dom.workerCard.classList.toggle('worker-card--red', status === 'red');
+  }
+
   function setStatus(message, isError = false) {
     dom.statusBox.textContent = message;
     dom.statusBox.style.borderColor = isError ? 'rgba(185, 28, 28, 0.45)' : 'rgba(11, 23, 33, 0.14)';
@@ -154,6 +162,7 @@ export function createUiController(dom) {
     selectedWorker = worker || null;
 
     if (!selectedWorker) {
+      syncWorkerCardTone(null);
       dom.workerName.textContent = 'Select a worker from the map';
       dom.workerRole.textContent = '-';
       dom.workerNowTime.textContent = '-';
@@ -166,6 +175,7 @@ export function createUiController(dom) {
     const status = selectedWorker.status === 'green' || selectedWorker.status === 'yellow' || selectedWorker.status === 'red'
       ? selectedWorker.status
       : 'yellow';
+    syncWorkerCardTone(status);
 
     dom.workerName.textContent = selectedWorker.name;
     dom.workerRole.textContent = `${selectedWorker.role} (${selectedWorker.id})`;

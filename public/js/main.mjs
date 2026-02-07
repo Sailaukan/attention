@@ -1,5 +1,6 @@
 import {
   getRuntimeConfig,
+  fetchBuildingFeatures,
   requestAttentionSwitchProposal,
   requestPromptTaskProposal
 } from './api/client.mjs';
@@ -9,6 +10,7 @@ import {
   FIXED_WORK_HOUR,
   FIXED_WORK_MINUTE
 } from './constants.mjs';
+import { ShadeController } from './map/shadeController.mjs';
 import { NYUAD_WORKERS, WorkerOverlay, cloneWorkers } from './map/workerOverlay.mjs';
 import { mountAppShell } from './ui/appShell.mjs';
 import { getDomRefs } from './ui/dom.mjs';
@@ -44,7 +46,8 @@ function startApp(dom) {
     selectedWorkerId: null,
     switchProposal: null,
     generatedTaskProposal: null,
-    groqEnabled: false
+    groqEnabled: false,
+    shadeEnabled: false
   };
 
   const map = L.map('map', { zoomControl: false }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
@@ -54,6 +57,12 @@ function startApp(dom) {
     maxZoom: 20
   }).addTo(map);
   L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+  const shadeController = new ShadeController({
+    map,
+    apiClient: { fetchBuildingFeatures },
+    onStatus: (message) => ui.setStatus(message)
+  });
 
   const workerOverlay = new WorkerOverlay(map, {
     workers: state.workers,
@@ -76,12 +85,21 @@ function startApp(dom) {
     try {
       const runtimeConfig = await getRuntimeConfig();
       state.groqEnabled = Boolean(runtimeConfig?.groqEnabled);
+      state.shadeEnabled = await shadeController.init(runtimeConfig, getFixedNow());
       renderUi();
 
       if (state.groqEnabled) {
-        ui.setStatus('Worker board ready. Red workers can receive AI reassignment proposals.');
+        if (state.shadeEnabled) {
+          ui.setStatus('Worker board ready. Shadow simulation is active. Red workers can receive AI reassignment proposals.');
+        } else {
+          ui.setStatus('Worker board ready. Set SHADEMAP_API_KEY to enable map shadows. Red workers can receive AI reassignment proposals.');
+        }
       } else {
-        ui.setStatus('Worker board ready. Set GROQ_API_KEY on server to enable AI proposals.');
+        if (state.shadeEnabled) {
+          ui.setStatus('Worker board ready. Shadow simulation is active. Set GROQ_API_KEY on server to enable AI proposals.');
+        } else {
+          ui.setStatus('Worker board ready. Set SHADEMAP_API_KEY for shadows and GROQ_API_KEY for AI proposals.');
+        }
       }
     } catch (error) {
       ui.setStatus(error.message || 'Failed to load runtime config.', true);
@@ -152,7 +170,7 @@ function startApp(dom) {
     const availabilityReason = !aiEnabled
       ? 'AI features are disabled until GROQ_API_KEY is configured on the server.'
       : (isRedWorker
-        ? 'This red worker is losing focus. AI proposes safer two-worker swaps with lighter load and lower exposure.'
+        ? 'This worker is losing focus. AI proposes safer two-worker swaps with lighter load and lower exposure.'
         : 'AI reassignment appears only for red workers who are losing focus.');
 
     ui.setAttentionAdvisorState({

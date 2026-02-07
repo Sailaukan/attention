@@ -1,5 +1,6 @@
 export function getDomRefs() {
   return {
+    workerCard: document.getElementById('workerCard'),
     statusBox: document.getElementById('status'),
     workerName: document.getElementById('workerName'),
     workerRole: document.getElementById('workerRole'),
