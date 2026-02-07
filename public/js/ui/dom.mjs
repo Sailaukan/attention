@@ -1,0 +1,31 @@
+export function getDomRefs() {
+  return {
+    form: document.getElementById('routeForm'),
+    fromInput: document.getElementById('fromInput'),
+    toInput: document.getElementById('toInput'),
+    autoPodInput: document.getElementById('autoPod'),
+    planBtn: document.getElementById('planBtn'),
+    swapBtn: document.getElementById('swapBtn'),
+    clearBtn: document.getElementById('clearBtn'),
+    pickFromBtn: document.getElementById('pickFromBtn'),
+    pickToBtn: document.getElementById('pickToBtn'),
+    pickHint: document.getElementById('pickHint'),
+    statusBox: document.getElementById('status'),
+    distanceValue: document.getElementById('distanceValue'),
+    durationValue: document.getElementById('durationValue'),
+    shadeValue: document.getElementById('shadeValue'),
+    sunnyValue: document.getElementById('sunnyValue'),
+    podStatus: document.getElementById('podStatus'),
+    alternativesBox: document.getElementById('alternatives'),
+    loaderEl: document.getElementById('loader'),
+    currentTimeEl: document.getElementById('currentTime'),
+    incrementBtn: document.getElementById('increment'),
+    decrementBtn: document.getElementById('decrement'),
+    playBtn: document.getElementById('play'),
+    stopBtn: document.getElementById('stop'),
+    exposureCheckbox: document.getElementById('exposure'),
+    exposureGradientContainer: document.getElementById('exposureGradientContainer'),
+    exposureGradient: document.getElementById('exposureGradient'),
+    hoursEl: document.getElementById('hours')
+  };
+}
