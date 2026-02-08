@@ -3,14 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Add New Employee - AI Cognitive Tracking</title>
+    <title>Attention is all you need | Worker Profile</title>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <link rel="stylesheet" href="dashboard-styles.css">
+    <link rel="stylesheet" href="src/employee/styles/dashboard.css">
 </head>
 <body>
     <div id="root"></div>
-    <script type="text/babel" src="add_new_employee.jsx"></script>
+
+    <script src="src/employee/data/employeeData.js"></script>
+    <script type="text/babel" src="src/employee/components/TopNav.jsx"></script>
+    <script type="text/babel" src="src/employee/components/LiveVideoCard.jsx"></script>
+    <script type="text/babel" src="src/employee/components/VideoTrackingCard.jsx"></script>
+    <script type="text/babel" src="src/employee/components/BrainSignalsChart.jsx"></script>
+    <script type="text/babel" src="src/employee/components/PerformanceAnalysisCard.jsx"></script>
+    <script type="text/babel" src="src/employee/pages/AddEmployeePage.jsx"></script>
 </body>
 </html>

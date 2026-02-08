@@ -2,7 +2,7 @@ import {
   SHADE_FEATURE_CACHE_TTL_MS,
   SHADE_FEATURE_MIN_ZOOM,
   TERRAIN_SOURCE
-} from '../constants.mjs';
+} from '../config/constants.mjs';
 
 export class ShadeController {
   constructor({ map, apiClient, onStatus }) {

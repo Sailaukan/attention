@@ -22,7 +22,7 @@ function AppShell() {
       e(
         'header',
         { className: 'card-head stack' },
-        e('h1', null, 'NYUAD Worker Board'),
+        e('h1', null, 'Attention is all you need'),
         e('span', { className: 'pill fixed-pill' }, 'Time: 2:00 PM')
       ),
       e('div', { id: 'status', className: 'status' }, 'Loading worker planner...'),

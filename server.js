@@ -8,7 +8,7 @@ const SHADEMAP_API_KEY = String(process.env.SHADEMAP_API_KEY || '').trim();
 const GROQ_API_KEY = String(process.env.GROQ_API_KEY || '').trim();
 const GROQ_MODEL = String(process.env.GROQ_MODEL || 'llama-3.3-70b-versatile').trim();
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const USER_AGENT = 'NYUADWorkerPlanner/1.0 (hackathon@local.dev)';
+const USER_AGENT = 'AttentionIsAllYouNeed/1.0 (hackathon@local.dev)';
 const BUILDING_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const buildingCache = new Map();
@@ -203,7 +203,7 @@ app.post('/api/llm/generate-task', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Cool Routes server running at http://localhost:${PORT}`);
+  console.log(`Attention is all you need server running at http://localhost:${PORT}`);
 });
 
 function normalizeWorkerContext(input) {

@@ -3,18 +3,20 @@ import {
   fetchBuildingFeatures,
   requestAttentionSwitchProposal,
   requestPromptTaskProposal
-} from './api/client.mjs';
+} from '../api/client.mjs';
 import {
   DEFAULT_CENTER,
-  DEFAULT_ZOOM,
-  FIXED_WORK_HOUR,
-  FIXED_WORK_MINUTE
-} from './constants.mjs';
-import { ShadeController } from './map/shadeController.mjs';
-import { NYUAD_WORKERS, WorkerOverlay, cloneWorkers } from './map/workerOverlay.mjs';
-import { mountAppShell } from './ui/appShell.mjs';
-import { getDomRefs } from './ui/dom.mjs';
-import { createUiController } from './ui/controller.mjs';
+  DEFAULT_ZOOM
+} from '../config/constants.mjs';
+import { NYUAD_WORKERS, cloneWorkers } from '../data/workers.mjs';
+import { buildWorkerContext, pickInitialWorkerId } from '../domain/workers.mjs';
+import { findCurrentTask, replaceCurrentOrNextTask } from '../domain/tasks.mjs';
+import { getFixedNow } from '../domain/time.mjs';
+import { ShadeController } from '../map/shadeController.mjs';
+import { WorkerOverlay } from '../map/workerOverlay.mjs';
+import { mountAppShell } from '../components/appShell.mjs';
+import { getDomRefs } from '../ui/domRefs.mjs';
+import { createUiController } from '../ui/controller.mjs';
 
 const appRoot = document.getElementById('app');
 
@@ -463,132 +465,6 @@ function startApp(dom) {
   function getSelectedWorker() {
     return state.workers.find((worker) => worker.id === state.selectedWorkerId) || null;
   }
-}
-
-function getFixedNow() {
-  const date = new Date();
-  date.setHours(FIXED_WORK_HOUR, FIXED_WORK_MINUTE, 0, 0);
-  return date;
-}
-
-function pickInitialWorkerId(workers) {
-  const firstRed = workers.find((worker) => worker.status === 'red');
-  if (firstRed) {
-    return firstRed.id;
-  }
-
-  return workers[0]?.id || null;
-}
-
-function buildWorkerContext(worker, nowDate) {
-  const currentTask = findCurrentTask(worker.plan, nowDate);
-  const upcomingTasks = findUpcomingTasks(worker.plan, nowDate).slice(0, 3);
-
-  return {
-    id: worker.id,
-    name: worker.name,
-    role: worker.role,
-    status: worker.status,
-    focusLevel: worker.focusLevel,
-    energyLevel: worker.energyLevel,
-    sunExposure: worker.sunExposure,
-    crowdLevel: worker.crowdLevel,
-    zone: worker.zone,
-    location: {
-      lat: Number(worker.position?.[0]),
-      lng: Number(worker.position?.[1])
-    },
-    currentTask,
-    upcomingTasks
-  };
-}
-
-function replaceCurrentOrNextTask(plan, taskUpdate, nowDate) {
-  if (!Array.isArray(plan)) {
-    return;
-  }
-
-  const targetIndex = plan.findIndex((task) => {
-    const phase = getTaskPhase(task, nowDate);
-    return phase === 'current' || phase === 'upcoming';
-  });
-
-  if (targetIndex >= 0) {
-    plan[targetIndex] = {
-      ...plan[targetIndex],
-      ...taskUpdate
-    };
-    return;
-  }
-
-  plan.push({
-    start: taskUpdate.start || '16:00',
-    end: taskUpdate.end || '17:00',
-    title: taskUpdate.title || 'New task',
-    details: taskUpdate.details || '',
-    load: taskUpdate.load || 'light',
-    zone: taskUpdate.zone || 'General zone',
-    sunExposure: taskUpdate.sunExposure || 'low',
-    crowdLevel: taskUpdate.crowdLevel || 'low'
-  });
-}
-
-function findCurrentTask(plan, nowDate) {
-  if (!Array.isArray(plan)) {
-    return null;
-  }
-
-  const nowMinutes = getCurrentMinutes(nowDate);
-  return plan.find((task) => getTaskPhaseWithMinutes(task, nowMinutes) === 'current') || null;
-}
-
-function findUpcomingTasks(plan, nowDate) {
-  if (!Array.isArray(plan)) {
-    return [];
-  }
-
-  const nowMinutes = getCurrentMinutes(nowDate);
-  return plan.filter((task) => getTaskPhaseWithMinutes(task, nowMinutes) === 'upcoming');
-}
-
-function getTaskPhase(task, nowDate) {
-  return getTaskPhaseWithMinutes(task, getCurrentMinutes(nowDate));
-}
-
-function getTaskPhaseWithMinutes(task, nowMinutes) {
-  const start = toMinutes(task.start);
-  const end = toMinutes(task.end);
-
-  if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(nowMinutes)) {
-    return 'upcoming';
-  }
-
-  if (nowMinutes < start) {
-    return 'upcoming';
-  }
-
-  if (nowMinutes >= end) {
-    return 'completed';
-  }
-
-  return 'current';
-}
-
-function getCurrentMinutes(date) {
-  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
-    return Number.NaN;
-  }
-
-  return (date.getHours() * 60) + date.getMinutes();
-}
-
-function toMinutes(hhmm) {
-  const [hours, minutes] = String(hhmm).split(':').map((value) => Number(value));
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
-    return Number.NaN;
-  }
-
-  return (hours * 60) + minutes;
 }
 
 function pause(ms) {

@@ -1,56 +1,89 @@
-# NYUAD Worker Planner (Hackathon MVP)
+# Attention is all you need
 
-A full-stack web app for managing on-site workers at NYU Abu Dhabi with map status, fixed-time timelines, and AI-assisted task replanning.
+Winner of the **c0mpiled hackathon**.
 
-## Highlights
+A full-stack worker safety and focus-planning app with:
+- live worker map and status tracking
+- AI-assisted reassignment for at-risk workers
+- prompt-based task generation
+- dedicated worker profile dashboard page
 
-- Live worker markers on the campus map with status colors:
-  - `green`: on track
-  - `yellow`: needs attention
-  - `red`: losing focus
-- Planner time is fixed to `2:00 PM` for deterministic testing.
-- Right-side worker panel with:
-  - worker profile/status
-  - timeline (completed/current/upcoming)
-  - upcoming tasks
-- AI Focus Rebalancer for red workers:
-  - considers task load, location, sun exposure, and crowd level
-  - proposes a two-worker reassignment (red + green)
-  - accept/reject workflow
-  - on accept, both involved workers become `yellow`
-- Prompt-based task editing:
-  - write a custom prompt
-  - generate one updated task with progress feedback
-  - accept/reject workflow
-- Separate modal window for all workers' plans.
-- Button to open detailed worker information page (external URL).
+## Screenshot
 
-## Architecture
+![Attention is all you need main page](./screen.png)
 
-- Backend: `server.js`
-- Frontend entry: `public/js/main.mjs`
-- API client: `public/js/api/client.mjs`
-- Map module:
-  - `public/js/map/workerOverlay.mjs`
-- UI modules:
-  - `public/js/ui/appShell.mjs`
-  - `public/js/ui/dom.mjs`
-  - `public/js/ui/controller.mjs`
+## Tech Stack
+
+- Backend: Node.js + Express (`server.js`)
+- Frontend planner: modular ES modules (`public/src/planner/*`)
+- Frontend profile page: React JSX components without a bundler (`public/src/employee/*`)
+
+## Project Structure
+
+```text
+.
+├── server.js
+├── package.json
+├── public
+│   ├── index.html
+│   ├── add_new_employee.html
+│   ├── lifting-cargo-platform-pov.mp4
+│   └── src
+│       ├── planner
+│       │   ├── api
+│       │   │   └── client.mjs
+│       │   ├── app
+│       │   │   └── main.mjs
+│       │   ├── components
+│       │   │   └── appShell.mjs
+│       │   ├── config
+│       │   │   └── constants.mjs
+│       │   ├── data
+│       │   │   └── workers.mjs
+│       │   ├── domain
+│       │   │   ├── tasks.mjs
+│       │   │   ├── time.mjs
+│       │   │   └── workers.mjs
+│       │   ├── map
+│       │   │   ├── shadeController.mjs
+│       │   │   └── workerOverlay.mjs
+│       │   ├── styles
+│       │   │   └── planner.css
+│       │   ├── ui
+│       │   │   ├── controller.mjs
+│       │   │   └── domRefs.mjs
+│       │   └── utils
+│       │       └── format.mjs
+│       └── employee
+│           ├── components
+│           │   ├── BrainSignalsChart.jsx
+│           │   ├── LiveVideoCard.jsx
+│           │   ├── PerformanceAnalysisCard.jsx
+│           │   ├── TopNav.jsx
+│           │   └── VideoTrackingCard.jsx
+│           ├── data
+│           │   └── employeeData.js
+│           ├── pages
+│           │   └── AddEmployeePage.jsx
+│           └── styles
+│               └── dashboard.css
+└── .env.example
+```
 
 ## Environment
 
-Use `.env`:
+Create `.env` (or copy from `.env.example`):
 
 ```bash
+SHADEMAP_API_KEY=YOUR_SHADEMAP_API_KEY_HERE
 GROQ_API_KEY=YOUR_GROQ_API_KEY_HERE
 GROQ_MODEL=llama-3.3-70b-versatile
 PORT=3000
 ```
 
 Notes:
-
-- `GROQ_API_KEY` is required for AI reassignment and prompt-based task generation.
-- Without `GROQ_API_KEY`, worker planning UI still works but AI actions are disabled.
+- `GROQ_API_KEY` enables AI reassignment and prompt-based task generation.
+- `SHADEMAP_API_KEY` enables map shadow simulation.
 
 ## Run
 
@@ -59,4 +92,13 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`.
+Open:
+- Planner: `http://localhost:3000/`
+- Worker profile page: `http://localhost:3000/add_new_employee.html`
+
+## Why This Refactor
+
+- Clear feature boundaries (`planner` vs `employee`)
+- Smaller focused modules (`domain`, `map`, `ui`, `components`)
+- React JSX split into reusable `pages` and `components`
+- Easier onboarding and faster feature iteration
