@@ -14,7 +14,6 @@ import { findCurrentTask, replaceCurrentOrNextTask } from '../domain/tasks.mjs';
 import { getFixedNow } from '../domain/time.mjs';
 import { ShadeController } from '../map/shadeController.mjs';
 import { WorkerOverlay } from '../map/workerOverlay.mjs';
-import { mountAppShell } from '../components/appShell.mjs';
 import { getDomRefs } from '../ui/domRefs.mjs';
 import { createUiController } from '../ui/controller.mjs';
 
@@ -24,12 +23,28 @@ if (!appRoot) {
   throw new Error('Missing #app root container.');
 }
 
-mountAppShell(appRoot);
-requestAnimationFrame(() => startWhenDomReady());
+waitForAppShellAndStart();
+
+function waitForAppShellAndStart(attempt = 0) {
+  const mountAppShell = window.PlannerApp?.mountAppShell;
+
+  if (typeof mountAppShell === 'function') {
+    mountAppShell(appRoot);
+    requestAnimationFrame(() => startWhenDomReady());
+    return;
+  }
+
+  if (attempt >= 120) {
+    appRoot.innerHTML = '<div style="padding:16px;font-family:Manrope,sans-serif;color:#7f1d1d;background:#fff1f2;border:1px solid #fecdd3;border-radius:10px;margin:16px;">Planner shell failed to load. Hard refresh the page and check browser console.</div>';
+    return;
+  }
+
+  requestAnimationFrame(() => waitForAppShellAndStart(attempt + 1));
+}
 
 function startWhenDomReady(attempt = 0) {
   const dom = getDomRefs();
-  if (!dom.statusBox || !document.getElementById('map')) {
+  if (!document.getElementById('map')) {
     if (attempt < 5) {
       requestAnimationFrame(() => startWhenDomReady(attempt + 1));
       return;
@@ -48,6 +63,7 @@ function startApp(dom) {
     selectedWorkerId: null,
     switchProposal: null,
     generatedTaskProposal: null,
+    selectedModel: 'k2think',
     groqEnabled: false,
     shadeEnabled: false
   };
@@ -127,7 +143,25 @@ function startApp(dom) {
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') {
         ui.toggleAllPlans(false);
+        dom.modelSelectorMenu?.classList.add('hidden');
       }
+    });
+
+    document.addEventListener('click', (event) => {
+      if (!dom.modelSelectorMenu || !dom.modelSelectorBtn) {
+        return;
+      }
+
+      const target = event.target;
+      if (!target) {
+        return;
+      }
+
+      if (dom.modelSelectorMenu.contains(target) || dom.modelSelectorBtn.contains(target)) {
+        return;
+      }
+
+      dom.modelSelectorMenu.classList.add('hidden');
     });
 
     dom.generateSwitchBtn.addEventListener('click', () => {
@@ -146,6 +180,38 @@ function startApp(dom) {
       void generatePromptTask();
     });
 
+    dom.taskPromptInput.addEventListener('input', () => {
+      syncPromptInputSize();
+    });
+
+    dom.modelSelectorBtn?.addEventListener('click', () => {
+      if (dom.modelSelectorBtn.disabled) {
+        return;
+      }
+
+      dom.modelSelectorMenu?.classList.toggle('hidden');
+    });
+
+    dom.modelSelectorMenu?.addEventListener('click', (event) => {
+      const option = event.target?.closest?.('[data-model]');
+      if (!option) {
+        return;
+      }
+
+      const nextModel = String(option.getAttribute('data-model') || '').trim();
+      if (!nextModel) {
+        return;
+      }
+
+      state.selectedModel = nextModel;
+      syncSelectedModelUi();
+      dom.modelSelectorMenu.classList.add('hidden');
+    });
+
+    dom.fullPlanToggleBtn.addEventListener('click', () => {
+      ui.toggleFullPlan();
+    });
+
     dom.acceptGeneratedTaskBtn.addEventListener('click', () => {
       acceptGeneratedTask();
     });
@@ -157,6 +223,8 @@ function startApp(dom) {
     dom.openWorkerDetailsBtn.addEventListener('click', () => {
       openWorkerDetails();
     });
+
+    syncPromptInputSize();
   }
 
   function renderUi() {
@@ -169,6 +237,7 @@ function startApp(dom) {
     ui.renderAllPlans(state.workers, now);
 
     const isRedWorker = selectedWorker?.status === 'red';
+    ui.setAttentionSectionVisible(isRedWorker);
     const availabilityReason = !aiEnabled
       ? 'AI features are disabled until GROQ_API_KEY is configured on the server.'
       : (isRedWorker
@@ -182,8 +251,13 @@ function startApp(dom) {
     });
 
     dom.taskPromptInput.disabled = !aiEnabled;
+    if (dom.modelSelectorBtn) {
+      dom.modelSelectorBtn.disabled = !aiEnabled;
+    }
     dom.generateTaskBtn.disabled = !aiEnabled;
-    dom.generateTaskBtn.textContent = aiEnabled ? 'Generate Task From Prompt' : 'Groq Key Required';
+    dom.generateTaskBtn.textContent = '→';
+    dom.generateTaskBtn.setAttribute('aria-label', aiEnabled ? 'Generate task from prompt' : 'Groq key required');
+    dom.generateTaskBtn.setAttribute('title', aiEnabled ? 'Generate task from prompt' : 'Groq key required');
 
     if (state.switchProposal && isRedWorker && state.switchProposal.redWorkerId === selectedWorker.id) {
       ui.setSwitchProposal(state.switchProposal, workerNameById);
@@ -200,6 +274,9 @@ function startApp(dom) {
       ui.clearGeneratedTaskProposal();
       state.generatedTaskProposal = null;
     }
+
+    syncSelectedModelUi();
+    syncPromptInputSize();
   }
 
   async function generateSwitchProposal() {
@@ -247,7 +324,7 @@ function startApp(dom) {
 
       const now = getFixedNow();
       const proposal = await requestAttentionSwitchProposal({
-        siteName: 'NYU Abu Dhabi campus',
+        siteName: 'MBZUAI campus, Masdar City',
         nowIso: now.toISOString(),
         redWorker: buildWorkerContext(selectedWorker, now),
         candidateWorkers: candidateWorkers.map((worker) => buildWorkerContext(worker, now))
@@ -366,6 +443,7 @@ function startApp(dom) {
       const proposal = await requestPromptTaskProposal({
         nowIso: now.toISOString(),
         prompt,
+        model: state.selectedModel,
         worker: buildWorkerContext(selectedWorker, now)
       });
 
@@ -411,6 +489,7 @@ function startApp(dom) {
 
     state.generatedTaskProposal = null;
     dom.taskPromptInput.value = '';
+    syncPromptInputSize();
     ui.setTaskProgress([]);
     ui.clearGeneratedTaskProposal();
     renderUi();
@@ -464,6 +543,45 @@ function startApp(dom) {
 
   function getSelectedWorker() {
     return state.workers.find((worker) => worker.id === state.selectedWorkerId) || null;
+  }
+
+  function syncSelectedModelUi() {
+    const nameByModel = {
+      k2think: 'K2 Think V2',
+      'deepseek-r1': 'DeepSeek R1'
+    };
+
+    if (dom.selectedModelLabel) {
+      dom.selectedModelLabel.textContent = nameByModel[state.selectedModel] || state.selectedModel;
+    }
+
+    const checks = document.querySelectorAll('[data-model-check]');
+    checks.forEach((node) => {
+      const model = node.getAttribute('data-model-check');
+      node.classList.toggle('hidden', model !== state.selectedModel);
+    });
+  }
+
+  function syncPromptInputSize() {
+    const textarea = dom.taskPromptInput;
+    if (!textarea) {
+      return;
+    }
+
+    const computed = window.getComputedStyle(textarea);
+    const lineHeight = Number.parseFloat(computed.lineHeight) || 22;
+    const paddingTop = Number.parseFloat(computed.paddingTop) || 0;
+    const paddingBottom = Number.parseFloat(computed.paddingBottom) || 0;
+    const borderTop = Number.parseFloat(computed.borderTopWidth) || 0;
+    const borderBottom = Number.parseFloat(computed.borderBottomWidth) || 0;
+
+    const minHeight = lineHeight + paddingTop + paddingBottom + borderTop + borderBottom;
+    const maxHeight = (lineHeight * 4) + paddingTop + paddingBottom + borderTop + borderBottom;
+
+    textarea.style.height = 'auto';
+    const nextHeight = Math.max(minHeight, Math.min(textarea.scrollHeight, maxHeight));
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
   }
 }
 

@@ -10,7 +10,7 @@ export const NYUAD_WORKERS = [
     crowdLevel: 'medium',
     zone: 'Zone A Spine',
     profileUrl: 'https://example.com/workers/W-101',
-    position: [24.52395, 54.4343],
+    position: [24.43274, 54.61811],
     plan: [
       { start: '07:00', end: '07:30', title: 'Safety briefing', details: 'Lead morning toolbox talk for Zone A crew.', load: 'light', zone: 'Zone A Spine', sunExposure: 'low', crowdLevel: 'medium' },
       { start: '07:30', end: '09:00', title: 'Steel frame alignment', details: 'Verify columns and beam alignment before bolting.', load: 'medium', zone: 'Zone A North', sunExposure: 'medium', crowdLevel: 'high' },
@@ -30,7 +30,7 @@ export const NYUAD_WORKERS = [
     crowdLevel: 'high',
     zone: 'North Elevation',
     profileUrl: 'https://example.com/workers/W-102',
-    position: [24.52325, 54.43478],
+    position: [24.43258, 54.61866],
     plan: [
       { start: '07:00', end: '08:00', title: 'Panel staging check', details: 'Confirm panel sequence and crane slots.', load: 'light', zone: 'North Yard', sunExposure: 'low', crowdLevel: 'medium' },
       { start: '08:00', end: '10:00', title: 'Facade panel install', details: 'Install north elevation bay 3 and bay 4.', load: 'medium', zone: 'North Elevation', sunExposure: 'high', crowdLevel: 'high' },
@@ -50,7 +50,7 @@ export const NYUAD_WORKERS = [
     crowdLevel: 'high',
     zone: 'Trench 2 Corridor',
     profileUrl: 'https://example.com/workers/W-103',
-    position: [24.52278, 54.43422],
+    position: [24.43231, 54.61844],
     plan: [
       { start: '06:30', end: '07:30', title: 'Underground permit review', details: 'Recheck excavation permits for trench 2.', load: 'light', zone: 'Utilities Desk', sunExposure: 'low', crowdLevel: 'low' },
       { start: '07:30', end: '09:30', title: 'Heavy conduit relocation', details: 'Move conduit bundles away from trench crossing.', load: 'heavy', zone: 'Trench 2 Corridor', sunExposure: 'high', crowdLevel: 'high' },
@@ -70,7 +70,7 @@ export const NYUAD_WORKERS = [
     crowdLevel: 'low',
     zone: 'Podium East',
     profileUrl: 'https://example.com/workers/W-104',
-    position: [24.52234, 54.43356],
+    position: [24.43213, 54.61802],
     plan: [
       { start: '07:00', end: '08:00', title: 'Batch plant sampling', details: 'Collect and log morning concrete samples.', load: 'light', zone: 'QA Lab', sunExposure: 'low', crowdLevel: 'low' },
       { start: '08:00', end: '09:30', title: 'Slump and temperature tests', details: 'Run field tests for podium pour.', load: 'light', zone: 'Podium East', sunExposure: 'low', crowdLevel: 'low' },
@@ -90,7 +90,7 @@ export const NYUAD_WORKERS = [
     crowdLevel: 'medium',
     zone: 'Block C Corridor',
     profileUrl: 'https://example.com/workers/W-105',
-    position: [24.52311, 54.43298],
+    position: [24.43246, 54.61776],
     plan: [
       { start: '07:00', end: '08:30', title: 'Cable tray prep', details: 'Mark route and mount supports in Block C.', load: 'medium', zone: 'Block C Corridor', sunExposure: 'medium', crowdLevel: 'medium' },
       { start: '08:30', end: '10:30', title: 'Main feeder pulling', details: 'Coordinate pull crew and tension readings.', load: 'heavy', zone: 'Block C Corridor', sunExposure: 'high', crowdLevel: 'high' },
@@ -110,7 +110,7 @@ export const NYUAD_WORKERS = [
     crowdLevel: 'high',
     zone: 'Heavy Lift Lane',
     profileUrl: 'https://example.com/workers/W-106',
-    position: [24.52435, 54.43342],
+    position: [24.43289, 54.61824],
     plan: [
       { start: '06:45', end: '07:30', title: 'Rigging inspection', details: 'Inspect slings, shackles, and spreader bar tags.', load: 'medium', zone: 'Lift Yard', sunExposure: 'medium', crowdLevel: 'medium' },
       { start: '07:30', end: '09:00', title: 'Crane setup validation', details: 'Confirm outriggers and exclusion zones.', load: 'heavy', zone: 'Heavy Lift Lane', sunExposure: 'high', crowdLevel: 'high' },
@@ -130,7 +130,7 @@ export const NYUAD_WORKERS = [
     crowdLevel: 'medium',
     zone: 'Logistics Gate',
     profileUrl: 'https://example.com/workers/W-107',
-    position: [24.52198, 54.43405],
+    position: [24.43208, 54.61863],
     plan: [
       { start: '07:00', end: '08:00', title: 'Gate schedule sync', details: 'Assign delivery windows to suppliers.', load: 'light', zone: 'Logistics Gate', sunExposure: 'low', crowdLevel: 'medium' },
       { start: '08:00', end: '10:00', title: 'Material receiving', details: 'Check delivery notes and storage zoning.', load: 'medium', zone: 'Logistics Gate', sunExposure: 'low', crowdLevel: 'medium' },

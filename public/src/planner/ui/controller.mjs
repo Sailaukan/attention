@@ -48,6 +48,19 @@ function getTaskPhase(task, nowMin) {
   return 'current';
 }
 
+function statusPillClasses(status) {
+  const base = 'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-extrabold tracking-wide';
+  if (status === 'green') {
+    return `${base} border-emerald-300 bg-emerald-100 text-emerald-900`;
+  }
+
+  if (status === 'red') {
+    return `${base} border-rose-300 bg-rose-100 text-rose-900`;
+  }
+
+  return `${base} border-amber-300 bg-amber-100 text-amber-900`;
+}
+
 function renderTaskMeta(task) {
   const meta = [
     task.load ? `Load: ${task.load}` : null,
@@ -56,7 +69,21 @@ function renderTaskMeta(task) {
     task.crowdLevel ? `Crowd: ${task.crowdLevel}` : null
   ].filter(Boolean);
 
-  return meta.length ? `<small>${escapeHtml(meta.join(' | '))}</small>` : '';
+  return meta.length
+    ? `<div class="mt-1 text-[11px] text-slate-700">${escapeHtml(meta.join(' | '))}</div>`
+    : '';
+}
+
+function timelinePhaseClasses(phase) {
+  if (phase === 'completed') {
+    return 'opacity-60 border-slate-200 bg-white';
+  }
+
+  if (phase === 'current') {
+    return 'border-teal-300 bg-teal-50/80';
+  }
+
+  return 'border-sky-300 bg-white';
 }
 
 function renderTimeline(worker, nowDate) {
@@ -70,38 +97,108 @@ function renderTimeline(worker, nowDate) {
   return tasks.map((task) => {
     const phase = getTaskPhase(task, nowMin);
 
-    return `<div class="timeline-row timeline-row--${phase}">
-      <div class="timeline-time">${escapeHtml(task.start)} - ${escapeHtml(task.end)}</div>
-      <div class="timeline-content">
-        <strong>${escapeHtml(task.title)}</strong><br>
-        <span>${escapeHtml(task.details || '')}</span>
+    return `<div class="grid grid-cols-[92px_1fr] gap-2 rounded-md border p-2 max-sm:grid-cols-1 ${timelinePhaseClasses(phase)}">
+      <div class="font-mono text-[11px] text-slate-700">${escapeHtml(task.start)} - ${escapeHtml(task.end)}</div>
+      <div>
+        <div class="text-xs font-semibold text-slate-900">${escapeHtml(task.title || 'Untitled task')}</div>
+        <div class="text-xs text-slate-600">${escapeHtml(task.details || '')}</div>
         ${renderTaskMeta(task)}
       </div>
     </div>`;
   }).join('');
 }
 
-function renderUpcoming(worker, nowDate) {
-  const tasks = Array.isArray(worker?.plan) ? worker.plan : [];
-  const nowMin = currentMinutes(nowDate);
-
-  const upcoming = tasks.filter((task) => {
+function findCurrentTask(tasks, nowMin) {
+  return tasks.find((task) => {
     const startMin = toMinutes(task.start);
-    return Number.isFinite(startMin) && Number.isFinite(nowMin) && startMin > nowMin;
-  });
+    const endMin = toMinutes(task.end);
+    return Number.isFinite(startMin) && Number.isFinite(endMin) && Number.isFinite(nowMin) && nowMin >= startMin && nowMin < endMin;
+  }) || null;
+}
 
-  if (!upcoming.length) {
-    return 'No upcoming tasks left for today.';
+function findNextTask(tasks, nowMin) {
+  return tasks
+    .filter((task) => {
+      const startMin = toMinutes(task.start);
+      return Number.isFinite(startMin) && Number.isFinite(nowMin) && startMin > nowMin;
+    })
+    .sort((left, right) => toMinutes(left.start) - toMinutes(right.start))[0] || null;
+}
+
+function renderQuickTask(task, label, variant) {
+  const variantClass = variant === 'current'
+    ? 'border-teal-300 bg-teal-50/80'
+    : 'border-slate-600 bg-white';
+
+  if (!task) {
+    return `<article class="rounded-md border border-dashed border-slate-300 bg-white p-2 text-slate-600">
+      <div class="text-[11px] font-bold uppercase tracking-[0.07em] text-slate-600">${escapeHtml(label)}</div>
+      <div class="mt-1 text-xs font-semibold">No task</div>
+      <div class="text-xs">No matching task for this time window.</div>
+    </article>`;
   }
 
-  return upcoming.map((task) => `
-    <div class="upcoming-row">
-      <strong>${escapeHtml(task.start)} - ${escapeHtml(task.end)}</strong>
-      <div>${escapeHtml(task.title)}</div>
-      <small>${escapeHtml(task.details || '')}</small>
-      ${renderTaskMeta(task)}
+  return `<article class="rounded-md border p-2 ${variantClass}">
+    <div class="flex items-center justify-between gap-2">
+      <div class="text-[11px] font-bold uppercase tracking-[0.07em] text-slate-600">${escapeHtml(label)}</div>
+      <div class="whitespace-nowrap font-mono text-[11px] text-slate-700">${escapeHtml(task.start)} - ${escapeHtml(task.end)}</div>
     </div>
-  `).join('');
+    <div class="mt-1 text-xs font-semibold text-slate-900">${escapeHtml(task.title || 'Untitled task')}</div>
+    <div class="text-xs text-slate-600">${escapeHtml(task.details || '')}</div>
+    ${renderTaskMeta(task)}
+  </article>`;
+}
+
+function renderQuickTasks(worker, nowDate) {
+  const tasks = Array.isArray(worker?.plan) ? worker.plan : [];
+  if (!tasks.length) {
+    return 'No timeline defined.';
+  }
+
+  const nowMin = currentMinutes(nowDate);
+  const currentTask = findCurrentTask(tasks, nowMin);
+  const nextTask = findNextTask(tasks, nowMin);
+
+  return [
+    renderQuickTask(currentTask, 'Current Task', 'current'),
+    renderQuickTask(nextTask, 'Upcoming Task', 'upcoming')
+  ].join('');
+}
+
+function buildInsightGuidance(worker) {
+  if (worker.status === 'red') {
+    return 'High risk. Prioritize shaded zones, lower crowd density, and lighter load tasks.';
+  }
+
+  if (worker.focusLevel === 'low' || worker.energyLevel === 'low') {
+    return 'Fatigue indicators detected. Consider shorter cycles and more frequent checks.';
+  }
+
+  if (worker.sunExposure === 'high' || worker.crowdLevel === 'high') {
+    return 'Environmental pressure is elevated. Shift to calmer, lower-exposure zones where possible.';
+  }
+
+  return 'Conditions are stable. Keep current pace with routine safety checks.';
+}
+
+function renderWorkerInsights(worker) {
+  if (!worker) {
+    return 'No worker selected yet.';
+  }
+
+  const chips = [
+    `Status: ${STATUS_LABEL[worker.status] || 'Unknown'}`,
+    `Focus: ${worker.focusLevel || 'unknown'}`,
+    `Energy: ${worker.energyLevel || 'unknown'}`,
+    `Sun: ${worker.sunExposure || 'unknown'}`,
+    `Crowd: ${worker.crowdLevel || 'unknown'}`,
+    `Zone: ${worker.zone || 'Unknown'}`
+  ];
+
+  return `<div class="text-xs text-slate-800">${escapeHtml(buildInsightGuidance(worker))}</div>
+    <div class="mt-2 flex flex-wrap gap-1.5">
+      ${chips.map((chip) => `<span class="inline-flex items-center rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-[11px] font-bold text-slate-800">${escapeHtml(chip)}</span>`).join('')}
+    </div>`;
 }
 
 function renderAllPlansTable(workers, nowDate) {
@@ -117,16 +214,16 @@ function renderAllPlansTable(workers, nowDate) {
       return Number.isFinite(startMin) && Number.isFinite(nowMin) && startMin >= nowMin;
     });
 
-    return `<article class="all-plan-worker">
-      <div class="all-plan-head">
-        <strong>${escapeHtml(worker.name)}</strong>
-        <span class="status-pill status-pill--${escapeHtml(worker.status)}">${escapeHtml(STATUS_LABEL[worker.status] || 'Unknown')}</span>
+    return `<article class="rounded-none border border-slate-300 bg-white p-2">
+      <div class="flex items-center justify-between gap-2">
+        <strong class="text-sm text-slate-900">${escapeHtml(worker.name)}</strong>
+        <span class="${statusPillClasses(worker.status)}">${escapeHtml(STATUS_LABEL[worker.status] || 'Unknown')}</span>
       </div>
-      <div class="all-plan-role">${escapeHtml(worker.role)} (${escapeHtml(worker.id)})</div>
-      <div class="all-plan-next">
+      <div class="mt-1 text-xs text-slate-700">${escapeHtml(worker.role)} (${escapeHtml(worker.id)})</div>
+      <div class="mt-2 text-xs text-slate-800">
         ${nextTask ? `<strong>Next:</strong> ${escapeHtml(nextTask.start)} ${escapeHtml(nextTask.title)}` : '<strong>Next:</strong> Completed for today'}
       </div>
-      <div class="all-plan-mini-timeline">${renderTimeline(worker, nowDate)}</div>
+      <div class="mt-2 grid gap-1.5">${renderTimeline(worker, nowDate)}</div>
     </article>`;
   }).join('');
 }
@@ -136,40 +233,81 @@ function renderProgressLines(lines) {
     return '';
   }
 
-  return lines.map((line) => `<div class="progress-line">${escapeHtml(line)}</div>`).join('');
+  return lines
+    .map((line) => `<div class="border-b border-dashed border-slate-200 py-1 text-xs text-slate-700 last:border-b-0">${escapeHtml(line)}</div>`)
+    .join('');
+}
+
+function setBaseCardTone(dom) {
+  dom.workerCard.classList.remove('bg-rose-50/95', 'border-slate-200');
+  dom.workerCard.classList.add('bg-white/95', 'border-slate-200');
+  dom.workerInfoCard?.classList.remove('bg-white/95', 'border-slate-200');
+  dom.workerInfoCard?.classList.add('bg-white/95', 'border-slate-200');
+}
+
+function setRedCardTone(dom) {
+  dom.workerCard.classList.remove('bg-white/95', 'border-slate-300');
+  dom.workerCard.classList.add('bg-white/95', 'border-slate-300');
+  dom.workerInfoCard?.classList.remove('bg-white/95', 'border-slate-200');
+  dom.workerInfoCard?.classList.add('bg-white/95', 'border-rose-300');
 }
 
 export function createUiController(dom) {
   let selectedWorker = null;
   let workersSnapshot = [];
+  let selectedWorkerId = null;
+  let fullPlanExpanded = false;
 
   function syncWorkerCardTone(status) {
     if (!dom.workerCard) {
       return;
     }
 
-    dom.workerCard.classList.toggle('worker-card--red', status === 'red');
+    if (status === 'red') {
+      setRedCardTone(dom);
+      return;
+    }
+
+    setBaseCardTone(dom);
   }
 
   function setStatus(message, isError = false) {
+    if (!dom.statusBox) {
+      return;
+    }
+
     dom.statusBox.textContent = message;
-    dom.statusBox.style.borderColor = isError ? 'rgba(185, 28, 28, 0.45)' : 'rgba(11, 23, 33, 0.14)';
-    dom.statusBox.style.background = isError ? '#fee2e2' : '#f8fafc';
-    dom.statusBox.style.color = isError ? '#7f1d1d' : '#334155';
+    dom.statusBox.className = isError
+      ? 'mt-2 rounded-md border border-rose-300 bg-rose-100 p-2 text-xs text-rose-900'
+      : 'mt-2 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-700';
   }
 
   function setSelectedWorker(worker, nowDate = new Date()) {
     selectedWorker = worker || null;
+    const nextWorkerId = selectedWorker?.id || null;
+    const workerChanged = nextWorkerId !== selectedWorkerId;
+    selectedWorkerId = nextWorkerId;
 
     if (!selectedWorker) {
       syncWorkerCardTone(null);
       dom.workerName.textContent = 'Select a worker from the map';
       dom.workerRole.textContent = '-';
       dom.workerNowTime.textContent = '-';
+      dom.workerQuickTasks.textContent = 'No worker selected yet.';
+      dom.workerInsights.textContent = 'No worker selected yet.';
       dom.workerTimeline.textContent = 'No worker selected yet.';
-      dom.upcomingTasks.textContent = 'No worker selected yet.';
+      dom.workerTimeline.classList.add('hidden');
+      dom.fullPlanToggleBtn.disabled = true;
+      dom.fullPlanToggleBtn.textContent = 'Full Plan';
+      dom.workerStatusBadge.className = statusPillClasses('yellow');
+      dom.workerStatusBadge.textContent = STATUS_LABEL.yellow;
+      fullPlanExpanded = false;
       dom.openWorkerDetailsBtn.disabled = true;
       return;
+    }
+
+    if (workerChanged) {
+      fullPlanExpanded = false;
     }
 
     const status = selectedWorker.status === 'green' || selectedWorker.status === 'yellow' || selectedWorker.status === 'red'
@@ -180,17 +318,40 @@ export function createUiController(dom) {
     dom.workerName.textContent = selectedWorker.name;
     dom.workerRole.textContent = `${selectedWorker.role} (${selectedWorker.id})`;
     dom.workerNowTime.textContent = formatClock(nowDate);
-    dom.workerStatusBadge.className = `status-pill status-pill--${status}`;
+    dom.workerStatusBadge.className = statusPillClasses(status);
     dom.workerStatusBadge.textContent = STATUS_LABEL[status];
+    dom.workerQuickTasks.innerHTML = renderQuickTasks(selectedWorker, nowDate);
+    dom.workerInsights.innerHTML = renderWorkerInsights(selectedWorker);
     dom.workerTimeline.innerHTML = renderTimeline(selectedWorker, nowDate);
-    dom.upcomingTasks.innerHTML = renderUpcoming(selectedWorker, nowDate);
+    dom.workerTimeline.classList.toggle('hidden', !fullPlanExpanded);
+    dom.fullPlanToggleBtn.disabled = false;
+    dom.fullPlanToggleBtn.textContent = fullPlanExpanded ? 'Hide Full Plan' : 'Full Plan';
     dom.openWorkerDetailsBtn.disabled = false;
   }
 
+  function toggleFullPlan() {
+    if (!selectedWorker) {
+      return;
+    }
+
+    fullPlanExpanded = !fullPlanExpanded;
+    dom.workerTimeline.classList.toggle('hidden', !fullPlanExpanded);
+    dom.fullPlanToggleBtn.textContent = fullPlanExpanded ? 'Hide Full Plan' : 'Full Plan';
+  }
+
+  function setAttentionSectionVisible(visible) {
+    dom.aiRebalancerSection.classList.toggle('hidden', !visible);
+  }
+
   function setAttentionAdvisorState({ enabled, reason, loading }) {
-    dom.attentionHint.textContent = reason;
+    if (dom.attentionHint) {
+      dom.attentionHint.textContent = reason;
+    }
+
     dom.generateSwitchBtn.disabled = !enabled || Boolean(loading);
-    dom.generateSwitchBtn.textContent = loading ? 'Generating...' : 'Generate Reassignment Proposal';
+    dom.generateSwitchBtn.textContent = loading ? 'Generating...' : 'Adapt the plan to decrease risks';
+    dom.generateSwitchBtn.setAttribute('title', reason || '');
+    dom.generateSwitchBtn.setAttribute('aria-label', reason || 'Adapt the plan to decrease risks');
   }
 
   function setSwitchProgress(lines) {
@@ -224,7 +385,9 @@ export function createUiController(dom) {
 
   function setTaskPromptLoading(loading) {
     dom.generateTaskBtn.disabled = loading;
-    dom.generateTaskBtn.textContent = loading ? 'Generating...' : 'Generate Task From Prompt';
+    dom.generateTaskBtn.textContent = loading ? '…' : '→';
+    dom.generateTaskBtn.setAttribute('aria-label', loading ? 'Generating task' : 'Generate task from prompt');
+    dom.generateTaskBtn.setAttribute('title', loading ? 'Generating task' : 'Generate task from prompt');
   }
 
   function setTaskProgress(lines) {
@@ -275,6 +438,8 @@ export function createUiController(dom) {
   return {
     setStatus,
     setSelectedWorker,
+    toggleFullPlan,
+    setAttentionSectionVisible,
     setAttentionAdvisorState,
     setSwitchProgress,
     setSwitchProposal,

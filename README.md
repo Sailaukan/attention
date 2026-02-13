@@ -35,7 +35,7 @@ A full-stack worker safety and focus-planning app with:
 │       │   ├── app
 │       │   │   └── main.mjs
 │       │   ├── components
-│       │   │   └── appShell.mjs
+│       │   │   └── AppShell.jsx
 │       │   ├── config
 │       │   │   └── constants.mjs
 │       │   ├── data
@@ -47,8 +47,6 @@ A full-stack worker safety and focus-planning app with:
 │       │   ├── map
 │       │   │   ├── shadeController.mjs
 │       │   │   └── workerOverlay.mjs
-│       │   ├── styles
-│       │   │   └── planner.css
 │       │   ├── ui
 │       │   │   ├── controller.mjs
 │       │   │   └── domRefs.mjs
@@ -65,8 +63,6 @@ A full-stack worker safety and focus-planning app with:
 │           │   └── employeeData.js
 │           ├── pages
 │           │   └── AddEmployeePage.jsx
-│           └── styles
-│               └── dashboard.css
 └── .env.example
 ```
 

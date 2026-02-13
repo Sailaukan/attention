@@ -39,14 +39,14 @@ EmployeeProfileApp.BrainSignalsChart = function BrainSignalsChart({ data }) {
   const actualBarWidth = barWidth - barGap;
 
   return (
-    <div className="card">
-      <div className="card-title">Mental State</div>
-      <div className="card-subtitle">Focus level over time</div>
+    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="text-xs font-medium uppercase tracking-[0.08em] text-slate-500">Mental State</div>
+      <div className="mb-3 text-xs text-slate-400">Focus level over time</div>
 
-      <div className="current-focus">{getMentalState(data.liveTracking.focusLevel)}</div>
+      <div className="mb-3 text-2xl font-semibold text-slate-900">{getMentalState(data.liveTracking.focusLevel)}</div>
 
-      <div className="chart-container">
-        <svg className="chart-svg" viewBox={`0 0 ${width} ${height}`}>
+      <div className="overflow-x-auto">
+        <svg className="w-full min-w-[520px]" viewBox={`0 0 ${width} ${height}`}>
           <defs>
             <linearGradient id="barGradient" x1="0%" y1="0%" x2="0%" y2="100%">
               <stop offset="0%" stopColor="#10b981" stopOpacity="1" />
@@ -58,8 +58,8 @@ EmployeeProfileApp.BrainSignalsChart = function BrainSignalsChart({ data }) {
             const y = height - paddingBottom - (value * chartHeight / maxValue);
             return (
               <g key={value}>
-                <line x1={padding} y1={y} x2={width - padding} y2={y} className="chart-grid" />
-                <text x={padding - 10} y={y + 4} className="chart-label" textAnchor="end">
+                <line x1={padding} y1={y} x2={width - padding} y2={y} stroke="#e2e8f0" strokeWidth="1" />
+                <text x={padding - 10} y={y + 4} fontSize="11" fill="#64748b" textAnchor="end">
                   {value}%
                 </text>
               </g>
@@ -79,28 +79,27 @@ EmployeeProfileApp.BrainSignalsChart = function BrainSignalsChart({ data }) {
                 width={actualBarWidth}
                 height={barHeight}
                 fill="url(#barGradient)"
-                className="chart-bar"
               />
             );
           })}
 
-          <line x1={padding} y1={height - paddingBottom} x2={width - padding} y2={height - paddingBottom} className="chart-axis" />
-          <line x1={padding} y1={padding} x2={padding} y2={height - paddingBottom} className="chart-axis" />
+          <line x1={padding} y1={height - paddingBottom} x2={width - padding} y2={height - paddingBottom} stroke="#64748b" strokeWidth="1.2" />
+          <line x1={padding} y1={padding} x2={padding} y2={height - paddingBottom} stroke="#64748b" strokeWidth="1.2" />
 
           {timeLabels.map((hour) => {
             const x = padding + ((hour - timeRangeStart) / totalSpanHours) * chartWidth;
             const label = `${String(hour).padStart(2, '0')}:00`;
             return (
               <g key={label}>
-                <line x1={x} y1={height - paddingBottom} x2={x} y2={height - paddingBottom + 5} className="chart-axis" />
-                <text x={x} y={height - paddingBottom + 20} className="chart-label" textAnchor="middle">
+                <line x1={x} y1={height - paddingBottom} x2={x} y2={height - paddingBottom + 5} stroke="#64748b" strokeWidth="1.2" />
+                <text x={x} y={height - paddingBottom + 20} fontSize="11" fill="#64748b" textAnchor="middle">
                   {label}
                 </text>
               </g>
             );
           })}
 
-          <text x={width / 2} y={height - 10} className="chart-axis-label" textAnchor="middle">
+          <text x={width / 2} y={height - 10} fontSize="12" fill="#334155" textAnchor="middle">
             Time
           </text>
         </svg>

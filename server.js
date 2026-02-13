@@ -7,6 +7,7 @@ const PORT = process.env.PORT || 3000;
 const SHADEMAP_API_KEY = String(process.env.SHADEMAP_API_KEY || '').trim();
 const GROQ_API_KEY = String(process.env.GROQ_API_KEY || '').trim();
 const GROQ_MODEL = String(process.env.GROQ_MODEL || 'llama-3.3-70b-versatile').trim();
+const ALLOWED_GROQ_MODELS = ['k2think', 'deepseek-r1', GROQ_MODEL];
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const USER_AGENT = 'AttentionIsAllYouNeed/1.0 (hackathon@local.dev)';
 const BUILDING_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -170,8 +171,10 @@ app.post('/api/llm/generate-task', async (req, res) => {
       instruction: prompt,
       worker
     };
+    const requestedModel = normalizeGroqModel(req.body?.model);
 
     const modelOutput = await callGroqForJson({
+      model: requestedModel,
       systemPrompt: [
         'You are an operations planner assistant for construction tasks.',
         'Return strict JSON only.',
@@ -408,9 +411,9 @@ function haversineMeters(lat1, lng1, lat2, lng2) {
   return r * c;
 }
 
-async function callGroqForJson({ systemPrompt, userPayload, schemaHint }) {
+async function callGroqForJson({ systemPrompt, userPayload, schemaHint, model = GROQ_MODEL }) {
   const body = {
-    model: GROQ_MODEL,
+    model,
     temperature: 0.2,
     response_format: { type: 'json_object' },
     messages: [
@@ -453,6 +456,15 @@ async function callGroqForJson({ systemPrompt, userPayload, schemaHint }) {
   }
 
   return parsed;
+}
+
+function normalizeGroqModel(value) {
+  const model = String(value || '').trim();
+  if (!model) {
+    return GROQ_MODEL;
+  }
+
+  return ALLOWED_GROQ_MODELS.includes(model) ? model : GROQ_MODEL;
 }
 
 function safeJsonParse(value) {

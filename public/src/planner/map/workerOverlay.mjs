@@ -69,9 +69,15 @@ export class WorkerOverlay {
       return this.iconCache.get(normalizedStatus);
     }
 
+    const statusGradient = {
+      green: 'linear-gradient(145deg, #16a34a, #15803d)',
+      yellow: 'linear-gradient(145deg, #facc15, #ca8a04)',
+      red: 'linear-gradient(145deg, #ef4444, #b91c1c)'
+    };
+
     const icon = L.divIcon({
       className: '',
-      html: `<div class="worker-pin worker-pin--${normalizedStatus}"><span class="worker-pin__icon" aria-hidden="true">👷</span></div>`,
+      html: `<div style="width:30px;height:30px;border-radius:9999px;border:2px solid #fff;display:grid;place-items:center;box-shadow:0 8px 18px rgba(2, 6, 23, 0.35);background:${statusGradient[normalizedStatus]};"><span aria-hidden="true" style="font-size:14px;line-height:1;">👷</span></div>`,
       iconSize: [30, 30],
       iconAnchor: [15, 15],
       popupAnchor: [0, -14]
@@ -84,12 +90,13 @@ export class WorkerOverlay {
   addLegend() {
     const legend = L.control({ position: 'bottomleft' });
     legend.onAdd = () => {
-      const container = L.DomUtil.create('div', 'worker-legend');
+      const container = L.DomUtil.create('div', '');
+      container.style.cssText = 'background:rgba(255,255,255,0.95);border:1px solid rgba(15,23,42,0.18);border-radius:10px;padding:8px 10px;box-shadow:0 8px 20px rgba(2,6,23,0.2);color:#0f172a;font-size:12px;line-height:1.35;';
       container.innerHTML = `
-        <h4>NYUAD Worker Status</h4>
-        <div class="worker-legend__row"><span class="worker-legend__dot worker-legend__dot--green"></span>Green: On Track</div>
-        <div class="worker-legend__row"><span class="worker-legend__dot worker-legend__dot--yellow"></span>Yellow: Needs Attention</div>
-        <div class="worker-legend__row"><span class="worker-legend__dot worker-legend__dot--red"></span>Red: Losing Focus</div>
+        <h4 style="margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;">MBZUAI Worker Status</h4>
+        <div style="display:flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border-radius:9999px;display:inline-block;background:#16a34a;"></span>Green: On Track</div>
+        <div style="display:flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border-radius:9999px;display:inline-block;background:#eab308;"></span>Yellow: Needs Attention</div>
+        <div style="display:flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border-radius:9999px;display:inline-block;background:#dc2626;"></span>Red: Losing Focus</div>
       `;
       L.DomEvent.disableClickPropagation(container);
       return container;
